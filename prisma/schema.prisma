@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===== NexCRM Schema =====
+
+model Account {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  language  String   @default("pt-BR")
+  plan      String   @default("free")
+  autoResolvedays Int @default(30)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  contacts      Contact[]
+  conversations Conversation[]
+  labels        Label[]
+  teams         Team[]
+  agents        Agent[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  authId    String   @unique // Supabase Auth ID
+  name      String
+  email     String   @unique
+  avatarUrl String?
+  role      Role     @default(AGENT)
+  status    UserStatus @default(OFFLINE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  assignedConversations Conversation[] @relation("assignee")
+  messages              Message[]
+  notifications         Notification[]
+  teams                 TeamMember[]
+}
+
+model Contact {
+  id               String   @id @default(cuid())
+  name             String?
+  email            String?
+  phone            String?
+  avatarUrl        String?
+  customAttributes Json?    @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  conversations Conversation[]
+  labels        ContactLabel[]
+}
+
+model Conversation {
+  id        String             @id @default(cuid())
+  status    ConversationStatus @default(OPEN)
+  channel   Channel            @default(WEB)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  accountId  String
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  contactId  String
+  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  assigneeId String?
+  assignee   User?   @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  agentId    String?
+  agent      Agent?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  messages   Message[]
+  labels     ConversationLabel[]
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  content   String
+  type      MessageType @default(TEXT)
+  sender    SenderType
+  fileUrl   String?
+  fileName  String?
+  createdAt DateTime    @default(now())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Agent {
+  id          String @id @default(cuid())
+  name        String
+  voiceType   VoiceType @default(MASCULINE)
+  prompt      String    @db.Text
+  flow        String    @default("qualification")
+  personality String    @default("consultive")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  conversations Conversation[]
+}
+
+model Label {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  color       String  @default("#3B82F6")
+  createdAt   DateTime @default(now())
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  contacts      ContactLabel[]
+  conversations ConversationLabel[]
+
+  @@unique([accountId, name])
+}
+
+model ContactLabel {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  labelId   String
+  label     Label   @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, labelId])
+}
+
+model ConversationLabel {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  labelId        String
+  label          Label        @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, labelId])
+}
+
+model Team {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  members   TeamMember[]
+}
+
+model TeamMember {
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId String
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ===== Enums =====
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum UserStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  PENDING
+}
+
+enum Channel {
+  WEB
+  WHATSAPP
+}
+
+enum MessageType {
+  TEXT
+  FILE
+  IMAGE
+  AUDIO
+}
+
+enum SenderType {
+  CONTACT
+  USER
+  AI_AGENT
+}
+
+enum VoiceType {
+  MASCULINE
+  FEMININE
+}
