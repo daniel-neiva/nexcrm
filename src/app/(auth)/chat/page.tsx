@@ -257,32 +257,32 @@ export default function ChatPage() {
     return (
         <div className="flex h-full overflow-hidden">
             {/* Conversation List */}
-            <div className="w-[340px] border-r border-white/5 flex flex-col h-full shrink-0">
-                <div className="p-4 border-b border-white/5">
-                    <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-lg font-semibold text-white">WhatsApp</h2>
-                        <Badge className="text-[10px] bg-emerald-500/15 text-emerald-400 border-0">
+            <div className="w-[340px] apple-glass-heavy border-r border-white/10 flex flex-col h-full shrink-0 z-10 shadow-xl">
+                <div className="p-4 border-b border-white/[0.08]">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-bold tracking-tight text-white/90">WhatsApp</h2>
+                        <Badge className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-sm backdrop-blur-sm shadow-emerald-500/10 uppercase tracking-widest px-2">
                             ● Conectado
                         </Badge>
                     </div>
-                    <div className="relative mb-3">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+                    <div className="relative mb-4">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                         <Input
                             placeholder="Buscar conversas..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 bg-white/5 border-white/10 text-sm text-white placeholder:text-[#64748B] focus:ring-blue-500/30 focus:border-blue-500/50"
+                            className="pl-10 h-10 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-white/40 focus:ring-blue-500/50 focus:border-blue-500/50 shadow-inner hover:bg-white/10 transition-colors"
                         />
                     </div>
                     {/* Filter tabs */}
-                    <div className="flex gap-1">
-                        <button onClick={() => setFilter("all")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-medium", filter === "all" ? "bg-white/10 text-white" : "text-[#64748B] hover:text-white hover:bg-white/5")}>
+                    <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
+                        <button onClick={() => setFilter("all")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-semibold", filter === "all" ? "bg-white/10 text-white shadow-sm" : "text-white/50 hover:text-white/90 hover:bg-white/[0.04]")}>
                             Todas ({chats.length})
                         </button>
-                        <button onClick={() => setFilter("personal")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-medium", filter === "personal" ? "bg-white/10 text-white" : "text-[#64748B] hover:text-white hover:bg-white/5")}>
+                        <button onClick={() => setFilter("personal")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-semibold", filter === "personal" ? "bg-white/10 text-white shadow-sm" : "text-white/50 hover:text-white/90 hover:bg-white/[0.04]")}>
                             Pessoais ({personalCount})
                         </button>
-                        <button onClick={() => setFilter("groups")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-medium", filter === "groups" ? "bg-white/10 text-white" : "text-[#64748B] hover:text-white hover:bg-white/5")}>
+                        <button onClick={() => setFilter("groups")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-semibold", filter === "groups" ? "bg-white/10 text-white shadow-sm" : "text-white/50 hover:text-white/90 hover:bg-white/[0.04]")}>
                             Grupos ({groupCount})
                         </button>
                     </div>
@@ -291,50 +291,50 @@ export default function ChatPage() {
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {loadingChats ? (
                         <div className="flex items-center justify-center py-20">
-                            <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                            <Loader2 className="w-6 h-6 text-white/40 animate-spin" />
                         </div>
                     ) : filteredChats.length === 0 ? (
-                        <div className="text-center py-20 text-[#64748B] text-sm">
+                        <div className="text-center py-20 text-white/40 text-sm font-medium">
                             Nenhuma conversa encontrada
                         </div>
                     ) : (
-                        <div className="p-2 space-y-0.5">
+                        <div className="p-2 space-y-1">
                             {filteredChats.map((chat) => (
                                 <button
                                     key={chat.id}
                                     onClick={() => setSelectedChat(chat)}
                                     className={cn(
-                                        "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200",
+                                        "w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all duration-300 group",
                                         selectedChat?.id === chat.id
-                                            ? "bg-gradient-to-r from-blue-500/10 to-violet-500/5 border border-white/5"
-                                            : "hover:bg-white/5"
+                                            ? "apple-glass-panel border-white/20 shadow-lg"
+                                            : "hover:bg-white/[0.06] border border-transparent"
                                     )}
                                 >
                                     <div className={cn(
-                                        "w-10 h-10 rounded-full flex items-center justify-center border border-white/10 shrink-0",
+                                        "w-11 h-11 rounded-full flex items-center justify-center border border-white/20 shrink-0 shadow-inner group-hover:scale-105 transition-transform",
                                         chat.isGroup
-                                            ? "bg-gradient-to-br from-violet-500/20 to-purple-500/20"
-                                            : "bg-gradient-to-br from-blue-500/20 to-violet-500/20"
+                                            ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
+                                            : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                                     )}>
                                         {chat.isGroup ? (
-                                            <Users className="w-4 h-4 text-violet-300" />
+                                            <Users className="w-5 h-5 text-white/90" />
                                         ) : (
-                                            <span className="text-xs font-semibold text-white">
+                                            <span className="text-sm font-bold text-white/90">
                                                 {getInitials(chat.name)}
                                             </span>
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between mb-0.5">
-                                            <span className="text-sm font-medium text-white truncate">{chat.name}</span>
-                                            <span className="text-[10px] text-[#64748B] shrink-0">
+                                            <span className="text-sm font-semibold text-white/90 truncate">{chat.name}</span>
+                                            <span className="text-[10px] font-medium text-white/40 shrink-0">
                                                 {formatTime(chat.lastActivity)}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-[#64748B] truncate">{chat.lastMessage || chat.phoneFormatted || `+${chat.phone}`}</p>
+                                        <p className="text-xs text-white/50 truncate font-medium">{chat.lastMessage || chat.phoneFormatted || `+${chat.phone}`}</p>
                                     </div>
                                     {chat.unread > 0 && (
-                                        <Badge className="text-[10px] px-1.5 py-0 h-4 bg-gradient-to-r from-blue-500 to-violet-500 border-0 text-white shrink-0">
+                                        <Badge className="text-[10px] px-1.5 py-0 h-5 min-w-5 flex items-center justify-center bg-blue-500 border border-blue-400/50 shadow-md shadow-blue-500/20 text-white shrink-0 rounded-full font-bold">
                                             {chat.unread}
                                         </Badge>
                                     )}
@@ -347,58 +347,62 @@ export default function ChatPage() {
 
             {/* Chat Area */}
             {selectedChat ? (
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex-1 flex flex-col min-w-0 relative z-0">
                     {/* Chat Header */}
-                    <div className="h-16 px-5 flex items-center justify-between border-b border-white/5 shrink-0">
-                        <div className="flex items-center gap-3">
+                    <div className="h-16 px-6 apple-glass-heavy border-b border-white/[0.08] flex items-center justify-between shrink-0 shadow-sm relative z-20">
+                        <div className="flex items-center gap-4">
                             <div className={cn(
-                                "w-9 h-9 rounded-full flex items-center justify-center border border-white/10",
+                                "w-10 h-10 rounded-full flex items-center justify-center border border-white/20 shadow-inner",
                                 selectedChat.isGroup
-                                    ? "bg-gradient-to-br from-violet-500/30 to-purple-500/30"
-                                    : "bg-gradient-to-br from-blue-500/30 to-violet-500/30"
+                                    ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
+                                    : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                             )}>
                                 {selectedChat.isGroup ? (
-                                    <Users className="w-4 h-4 text-violet-300" />
+                                    <Users className="w-5 h-5 text-white/90" />
                                 ) : (
-                                    <span className="text-xs font-semibold text-white">
+                                    <span className="text-sm font-bold text-white/90">
                                         {getInitials(selectedChat.name)}
                                     </span>
                                 )}
                             </div>
                             <div>
-                                <h3 className="text-sm font-semibold text-white">{selectedChat.name}</h3>
-                                <p className="text-[11px] text-[#64748B]">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
+                                <h3 className="text-sm font-bold tracking-tight text-white/90">{selectedChat.name}</h3>
+                                <p className="text-[11px] font-medium text-white/50">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <button className="p-2 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
-                                <Phone className="w-4 h-4" />
+                        <div className="flex items-center gap-1.5">
+                            <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
+                                <Phone className="w-[18px] h-[18px]" />
                             </button>
-                            <button className="p-2 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
-                                <Video className="w-4 h-4" />
+                            <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
+                                <Video className="w-[18px] h-[18px]" />
                             </button>
-                            <button className="p-2 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
-                                <Bot className="w-4 h-4" />
+                            <div className="w-px h-5 bg-white/10 mx-1" />
+                            <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
+                                <Bot className="w-[18px] h-[18px]" />
                             </button>
-                            <button className="p-2 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
-                                <MoreVertical className="w-4 h-4" />
+                            <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
+                                <MoreVertical className="w-[18px] h-[18px]" />
                             </button>
                         </div>
                     </div>
 
                     {/* Messages */}
-                    <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                        <div className="p-5 max-w-3xl mx-auto">
+                    <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar relative z-10 masked-overflow pb-4">
+                        <div className="p-6 max-w-4xl mx-auto">
                             {loadingMessages ? (
                                 <div className="flex items-center justify-center py-20">
-                                    <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                                    <Loader2 className="w-6 h-6 text-white/40 animate-spin" />
                                 </div>
                             ) : messages.length === 0 ? (
-                                <div className="text-center py-20 text-[#64748B] text-sm">
-                                    Nenhuma mensagem nesta conversa
+                                <div className="text-center py-20 animate-fade-in flex flex-col items-center justify-center">
+                                    <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 shadow-inner">
+                                        <MessageSquare className="w-8 h-8 text-white/20" />
+                                    </div>
+                                    <p className="text-sm font-semibold text-white/50">Nenhuma mensagem nesta conversa</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="space-y-4">
                                     {messages.map((msg) => (
                                         <div
                                             key={msg.id}
@@ -409,15 +413,15 @@ export default function ChatPage() {
                                         >
                                             <div
                                                 className={cn(
-                                                    "max-w-[75%] px-4 py-2.5 text-sm",
+                                                    "max-w-[80%] px-5 py-3 text-[15px] leading-relaxed relative",
                                                     msg.fromMe
-                                                        ? "chat-bubble-sent"
-                                                        : "chat-bubble-received text-white"
+                                                        ? "chat-bubble-sent font-medium text-white/95 shadow-xl shadow-blue-500/10"
+                                                        : "chat-bubble-received font-medium text-white/90 shadow-lg"
                                                 )}
                                             >
                                                 {/* Group sender name */}
                                                 {selectedChat.isGroup && !msg.fromMe && msg.senderName && (
-                                                    <p className="text-[11px] font-medium text-blue-400 mb-1">{msg.senderName}</p>
+                                                    <p className="text-[11px] font-bold text-violet-400 mb-1 tracking-wider uppercase">{msg.senderName}</p>
                                                 )}
 
                                                 {/* Media content */}
@@ -429,17 +433,17 @@ export default function ChatPage() {
 
                                                 {/* Text-only without media */}
                                                 {!msg.hasMedia && !msg.content && msg.type === "sticker" && (
-                                                    <p className="text-xs opacity-70">🏷️ Figurinha</p>
+                                                    <p className="text-xs font-semibold opacity-50 italic">🏷️ Figurinha Oculta</p>
                                                 )}
 
-                                                <p
+                                                <div
                                                     className={cn(
-                                                        "text-[10px] mt-1",
-                                                        msg.fromMe ? "text-white/60" : "text-[#64748B]"
+                                                        "flex items-center gap-1 justify-end mt-1.5",
+                                                        msg.fromMe ? "text-white/60" : "text-white/40"
                                                     )}
                                                 >
-                                                    {formatMessageTime(msg.timestamp)}
-                                                </p>
+                                                    <span className="text-[9px] font-bold tracking-widest uppercase">{formatMessageTime(msg.timestamp)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -449,29 +453,29 @@ export default function ChatPage() {
                     </div>
 
                     {/* Message Input */}
-                    <form onSubmit={handleSendMessage} className="p-4 border-t border-white/5 shrink-0">
-                        <div className="flex items-center gap-2 max-w-3xl mx-auto">
-                            <button type="button" className="p-2.5 rounded-xl text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
+                    <form onSubmit={handleSendMessage} className="p-4 px-6 apple-glass-heavy border-t border-white/[0.08] shrink-0 relative z-20">
+                        <div className="flex items-center gap-3 max-w-4xl mx-auto">
+                            <button type="button" className="p-3 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/10">
                                 <Smile className="w-5 h-5" />
                             </button>
-                            <button type="button" className="p-2.5 rounded-xl text-[#64748B] hover:text-white hover:bg-white/5 transition-all">
+                            <button type="button" className="p-3 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/10">
                                 <Paperclip className="w-5 h-5" />
                             </button>
                             <Input
-                                placeholder="Digite uma mensagem..."
+                                placeholder="Mensagem..."
                                 value={messageInput}
                                 onChange={(e) => setMessageInput(e.target.value)}
-                                className="flex-1 bg-white/5 border-white/10 text-sm text-white placeholder:text-[#64748B] focus:ring-blue-500/30 focus:border-blue-500/50 rounded-xl"
+                                className="flex-1 h-12 px-5 bg-white/5 border-white/10 text-[15px] font-medium text-white/90 placeholder:text-white/30 focus:ring-blue-500/50 focus:border-blue-500/50 rounded-full shadow-inner tracking-wide"
                             />
                             <button
                                 type="submit"
                                 disabled={sendingMessage || !messageInput.trim()}
-                                className="btn-gradient p-2.5 rounded-xl disabled:opacity-50"
+                                className="btn-primary w-12 h-12 min-w-[3rem] h-full rounded-full flex items-center justify-center disabled:opacity-50 group hover:shadow-xl hover:shadow-blue-500/20"
                             >
                                 {sendingMessage ? (
                                     <Loader2 className="w-5 h-5 text-white animate-spin" />
                                 ) : (
-                                    <Send className="w-5 h-5 text-white" />
+                                    <Send className="w-5 h-5 text-white transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                                 )}
                             </button>
                         </div>
@@ -479,17 +483,16 @@ export default function ChatPage() {
                 </div>
             ) : (
                 /* No Chat Selected */
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center animate-fade-in">
-                        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/10 to-violet-500/10 flex items-center justify-center mx-auto mb-4">
-                            <MessageSquare className="w-10 h-10 text-[#64748B]" />
+                <div className="flex-1 flex items-center justify-center relative z-0">
+                    <div className="text-center animate-fade-in flex flex-col items-center">
+                        <div className="w-24 h-24 rounded-[2rem] bg-white/5 border border-white/10 shadow-2xl flex items-center justify-center mb-6">
+                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-violet-500/20 flex items-center justify-center border border-white/10 shadow-inner">
+                                <MessageSquare className="w-8 h-8 text-white/60" />
+                            </div>
                         </div>
-                        <h3 className="text-lg font-semibold text-white mb-1">WhatsApp conectado</h3>
-                        <p className="text-sm text-[#64748B]">
-                            Selecione uma conversa para começar
-                        </p>
-                        <p className="text-xs text-[#4a4f5a] mt-2">
-                            {chats.length} conversas carregadas
+                        <h3 className="text-2xl font-bold tracking-tight text-white/90 mb-2">Workspace Vazio</h3>
+                        <p className="text-sm font-medium text-white/50 max-w-xs">
+                            Selecione uma conversa do lado esquerdo para começar a interagir.
                         </p>
                     </div>
                 </div>
@@ -497,53 +500,55 @@ export default function ChatPage() {
 
             {/* Contact Panel */}
             {selectedChat && (
-                <div className="w-[280px] border-l border-white/5 p-4 hidden xl:block shrink-0 overflow-y-auto">
-                    <div className="flex flex-col items-center text-center mb-6 pt-4">
+                <div className="w-[320px] apple-glass-heavy border-l border-white/10 p-6 hidden xl:block shrink-0 overflow-y-auto shadow-xl z-20">
+                    <div className="flex flex-col items-center text-center mb-8 pt-6">
                         <div className={cn(
-                            "w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 mb-3 shadow-lg",
+                            "w-24 h-24 rounded-[2rem] flex items-center justify-center border border-white/20 mb-4 shadow-2xl shadow-blue-500/10",
                             selectedChat.isGroup
-                                ? "bg-gradient-to-br from-violet-500/30 to-purple-500/30 shadow-violet-500/10"
-                                : "bg-gradient-to-br from-blue-500/30 to-violet-500/30 shadow-blue-500/10"
+                                ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
+                                : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                         )}>
                             {selectedChat.isGroup ? (
-                                <Users className="w-7 h-7 text-violet-300" />
+                                <Users className="w-10 h-10 text-white/90" />
                             ) : (
-                                <span className="text-lg font-bold text-white">
+                                <span className="text-3xl font-bold text-white/90">
                                     {getInitials(selectedChat.name)}
                                 </span>
                             )}
                         </div>
-                        <h3 className="text-sm font-semibold text-white">{selectedChat.name}</h3>
-                        <p className="text-xs text-[#64748B]">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
+                        <h3 className="text-xl font-bold tracking-tight text-white/90 px-4">{selectedChat.name}</h3>
+                        <p className="text-[13px] font-medium text-white/50 mt-1.5">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
                     </div>
 
                     <div className="space-y-4">
-                        <div className="glass-card p-3">
-                            <p className="text-[10px] text-[#64748B] uppercase tracking-wider mb-2">{selectedChat.isGroup ? "Tipo" : "Canal"}</p>
-                            <div className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
+                        <div className="apple-glass-panel rounded-2xl p-4">
+                            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">{selectedChat.isGroup ? "Canal de Comunicação" : "Canal"}</p>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center border border-emerald-500/20 shadow-inner">
                                     {selectedChat.isGroup ? (
-                                        <Users className="w-3 h-3 text-emerald-400" />
+                                        <Users className="w-4 h-4 text-emerald-400" />
                                     ) : (
-                                        <MessageSquare className="w-3 h-3 text-emerald-400" />
+                                        <MessageSquare className="w-4 h-4 text-emerald-400" />
                                     )}
                                 </div>
-                                <span className="text-xs text-white">
-                                    {selectedChat.isGroup ? "Grupo WhatsApp" : "WhatsApp"}
+                                <span className="text-sm font-semibold text-white/80">
+                                    {selectedChat.isGroup ? "Grupo de WhatsApp" : "Linha de WhatsApp"}
                                 </span>
                             </div>
                         </div>
                         {!selectedChat.isGroup && (
-                            <div className="glass-card p-3">
-                                <p className="text-[10px] text-[#64748B] uppercase tracking-wider mb-2">Telefone</p>
-                                <p className="text-xs text-white">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
+                            <div className="apple-glass-panel rounded-2xl p-4">
+                                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Telefone Registrado</p>
+                                <p className="text-sm font-semibold text-white/80">{selectedChat.phoneFormatted || `+${selectedChat.phone}`}</p>
                             </div>
                         )}
-                        <div className="glass-card p-3">
-                            <p className="text-[10px] text-[#64748B] uppercase tracking-wider mb-2">Agente IA</p>
-                            <div className="flex items-center gap-2">
-                                <Bot className="w-4 h-4 text-[#64748B]" />
-                                <span className="text-xs text-[#94A3B8]">Nenhum atribuído</span>
+                        <div className="apple-glass-panel rounded-2xl p-4">
+                            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Assistente Atribuído</p>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-white/[0.04] flex items-center justify-center border border-white/10 shadow-inner">
+                                    <Bot className="w-4 h-4 text-white/30" />
+                                </div>
+                                <span className="text-sm font-medium text-white/40 italic">Atendimento Humano</span>
                             </div>
                         </div>
                     </div>

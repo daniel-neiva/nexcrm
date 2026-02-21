@@ -1,7 +1,7 @@
-import Groq from 'groq-sdk'
+import OpenAI from 'openai'
 
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
 })
 
 export interface AgentConfig {
@@ -29,12 +29,12 @@ Regras:
 - Mantenha a personalidade definida acima
 - Quando não souber algo, diga honestamente`
 
-    const completion = await groq.chat.completions.create({
+    const completion = await openai.chat.completions.create({
         messages: [
             { role: 'system', content: systemPrompt },
             ...messages,
         ],
-        model: 'llama-3.3-70b-versatile',
+        model: 'gpt-4o',
         temperature: 0.7,
         max_tokens: 1024,
         top_p: 1,
@@ -44,7 +44,7 @@ Regras:
 }
 
 export async function quickAIResponse(userMessage: string) {
-    const completion = await groq.chat.completions.create({
+    const completion = await openai.chat.completions.create({
         messages: [
             {
                 role: 'system',
@@ -52,7 +52,7 @@ export async function quickAIResponse(userMessage: string) {
             },
             { role: 'user', content: userMessage },
         ],
-        model: 'llama-3.3-70b-versatile',
+        model: 'gpt-4o',
         temperature: 0.5,
         max_tokens: 512,
     })

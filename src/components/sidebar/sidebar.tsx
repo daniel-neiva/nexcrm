@@ -92,12 +92,12 @@ export function Sidebar() {
     return (
         <aside
             className={cn(
-                "glass-sidebar h-screen flex flex-col transition-all duration-300 ease-in-out z-50",
-                collapsed ? "w-[72px]" : "w-[240px]"
+                "glass-sidebar h-screen flex flex-col transition-all duration-300 ease-in-out relative z-20",
+                collapsed ? "w-[72px]" : "w-[260px]"
             )}
         >
             {/* Logo */}
-            <div className="flex items-center h-16 px-4 border-b border-white/5">
+            <div className="flex items-center h-16 px-4 border-b border-white/[0.08]">
                 <Link href="/dashboard" className="flex items-center gap-3 group">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--nexcrm-gradient-start)] to-[var(--nexcrm-gradient-end)] flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow">
                         <span className="text-white font-bold text-sm">N</span>
@@ -121,10 +121,10 @@ export function Sidebar() {
                             key={item.href}
                             href={item.href}
                             className={cn(
-                                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",
+                                "flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
                                 isActive
-                                    ? "bg-gradient-to-r from-blue-500/15 to-violet-500/10 text-white shadow-sm"
-                                    : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                                    ? "apple-glass-panel text-white shadow-sm"
+                                    : "text-white/60 hover:text-white hover:bg-white/[0.06]"
                             )}
                         >
                             {/* Active indicator */}
@@ -137,7 +137,7 @@ export function Sidebar() {
                                     "w-5 h-5 transition-colors shrink-0",
                                     isActive
                                         ? "text-blue-400"
-                                        : "text-[#64748B] group-hover:text-white"
+                                        : "text-white/50 group-hover:text-white/90"
                                 )}
                             />
 
@@ -153,7 +153,7 @@ export function Sidebar() {
                                 <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                                 <TooltipContent
                                     side="right"
-                                    className="bg-[#1A1D24] border-white/10 text-white"
+                                    className="apple-glass-panel text-white outline-none border-white/10"
                                 >
                                     {item.label}
                                 </TooltipContent>
@@ -166,17 +166,17 @@ export function Sidebar() {
             </nav>
 
             {/* Footer */}
-            <div className="px-3 py-3 border-t border-white/5 space-y-2">
+            <div className="px-3 py-4 border-t border-white/[0.08] space-y-1">
                 {/* Notifications */}
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                         <Link
                             href="/notifications"
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-[#94A3B8] hover:text-white hover:bg-white/5 transition-all duration-200"
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm text-white/60 hover:text-white hover:bg-white/[0.06] transition-all duration-200"
                         >
                             <div className="relative shrink-0">
                                 <Bell className="w-5 h-5" />
-                                <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] bg-gradient-to-r from-blue-500 to-violet-500 border-0 text-white">
+                                <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] bg-blue-500 border-0 text-white animate-pulse">
                                     3
                                 </Badge>
                             </div>
@@ -186,7 +186,7 @@ export function Sidebar() {
                     {collapsed && (
                         <TooltipContent
                             side="right"
-                            className="bg-[#1A1D24] border-white/10 text-white"
+                            className="apple-glass-panel text-white outline-none border-white/10"
                         >
                             Notificações
                         </TooltipContent>
@@ -194,17 +194,17 @@ export function Sidebar() {
                 </Tooltip>
 
                 {/* User profile */}
-                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-all duration-200 cursor-pointer">
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-white/[0.06] transition-all duration-200 cursor-pointer">
                     <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center">
-                            <span className="text-white text-xs font-semibold">{userInitials || "..."}</span>
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/80 to-violet-500/80 backdrop-blur-md border border-white/20 flex items-center justify-center">
+                            <span className="text-white text-xs font-semibold">{userInitials || "N"}</span>
                         </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[var(--nexcrm-success)] border-2 border-[#0D0F12]" />
+                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-black" />
                     </div>
                     {!collapsed && (
                         <div className="flex-1 min-w-0 animate-fade-in">
-                            <p className="text-xs font-medium text-white truncate">{userName || "..."}</p>
-                            <p className="text-[10px] text-[#64748B]">Admin</p>
+                            <p className="text-xs font-medium text-white/90 truncate">{userName || "Admin"}</p>
+                            <p className="text-[10px] text-white/50">Admin</p>
                         </div>
                     )}
                 </div>
@@ -214,16 +214,16 @@ export function Sidebar() {
                     <TooltipTrigger asChild>
                         <button
                             onClick={handleSignOut}
-                            className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm text-[#64748B] hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+                            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-2xl text-sm text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
                         >
                             <LogOut className="w-4 h-4 shrink-0" />
-                            {!collapsed && <span className="animate-fade-in text-xs">Sair</span>}
+                            {!collapsed && <span className="animate-fade-in text-xs font-medium">Sair da Conta</span>}
                         </button>
                     </TooltipTrigger>
                     {collapsed && (
                         <TooltipContent
                             side="right"
-                            className="bg-[#1A1D24] border-white/10 text-white"
+                            className="apple-glass-panel text-white outline-none border-white/10"
                         >
                             Sair
                         </TooltipContent>
@@ -233,7 +233,7 @@ export function Sidebar() {
                 {/* Collapse toggle */}
                 <button
                     onClick={() => setCollapsed(!collapsed)}
-                    className="w-full flex items-center justify-center py-2 rounded-lg text-[#64748B] hover:text-white hover:bg-white/5 transition-all duration-200"
+                    className="w-full flex items-center justify-center py-2.5 rounded-2xl text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-all duration-200 mt-2"
                 >
                     {collapsed ? (
                         <ChevronRight className="w-4 h-4" />

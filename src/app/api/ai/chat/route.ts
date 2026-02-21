@@ -1,4 +1,4 @@
-import { chatWithAgent, quickAIResponse } from '@/lib/groq'
+import { chatWithAgent, quickAIResponse } from '@/lib/openai'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {

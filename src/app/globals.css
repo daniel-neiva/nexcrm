@@ -5,13 +5,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Google Fonts loaded above */
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: 'Inter', var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
+
+  /* Retaining ShadCN defaults mapped to custom tokens */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -20,11 +20,7 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -41,64 +37,64 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
 }
 
-/* ===== NexCRM Premium Dark Theme ===== */
+/* ===== NexCRM Apple Glass Dark Theme ===== */
 :root {
-  --radius: 0.75rem;
+  --radius: 1.25rem;
+  /* Corner radius (VisionOS style) */
 
-  /* Dark-only CRM — we force dark mode */
-  --background: #09090B;
-  --foreground: #F8FAFC;
-  --card: #111318;
-  --card-foreground: #F8FAFC;
-  --popover: #1A1D24;
-  --popover-foreground: #F8FAFC;
+  /* Dark Foundation */
+  --background: #000000;
+  --foreground: rgba(255, 255, 255, 0.95);
+  --card: rgba(25, 25, 25, 0.4);
+  --card-foreground: rgba(255, 255, 255, 0.95);
+  --popover: rgba(20, 20, 20, 0.6);
+  --popover-foreground: rgba(255, 255, 255, 0.95);
+
+  /* Brand Accents */
   --primary: #3B82F6;
   --primary-foreground: #FFFFFF;
-  --secondary: #1A1D24;
-  --secondary-foreground: #F8FAFC;
-  --muted: #1A1D24;
-  --muted-foreground: #94A3B8;
-  --accent: #1E293B;
-  --accent-foreground: #F8FAFC;
-  --destructive: #EF4444;
-  --border: #1E293B;
-  --input: #1E293B;
-  --ring: #3B82F6;
+  --secondary: rgba(255, 255, 255, 0.05);
+  /* Lighter glass */
+  --secondary-foreground: rgba(255, 255, 255, 0.8);
 
-  /* NexCRM Custom Tokens */
+  /* Interactions & Structure */
+  --muted: rgba(255, 255, 255, 0.03);
+  --muted-foreground: rgba(255, 255, 255, 0.5);
+  --accent: rgba(255, 255, 255, 0.08);
+  /* Hover state */
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --border: rgba(255, 255, 255, 0.08);
+  /* 1px Apple border */
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: rgba(59, 130, 246, 0.5);
+
+  /* NexCRM Glass Tokens */
   --nexcrm-gradient-start: #3B82F6;
   --nexcrm-gradient-end: #8B5CF6;
-  --nexcrm-glow: rgba(59, 130, 246, 0.15);
-  --nexcrm-surface: rgba(17, 19, 24, 0.7);
-  --nexcrm-glass-border: rgba(255, 255, 255, 0.06);
+  --nexcrm-glass-bg: rgba(25, 25, 25, 0.35);
+  --nexcrm-glass-border: rgba(255, 255, 255, 0.1);
   --nexcrm-success: #22C55E;
   --nexcrm-warning: #F59E0B;
 
-  /* Sidebar */
-  --sidebar: #0D0F12;
-  --sidebar-foreground: #94A3B8;
+  /* Sidebar specifically */
+  --sidebar: rgba(10, 10, 10, 0.4);
+  --sidebar-foreground: rgba(255, 255, 255, 0.7);
   --sidebar-primary: #3B82F6;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1A1D24;
-  --sidebar-accent-foreground: #F8FAFC;
-  --sidebar-border: #1E293B;
-  --sidebar-ring: #3B82F6;
-
-  /* Charts */
-  --chart-1: #3B82F6;
-  --chart-2: #8B5CF6;
-  --chart-3: #22C55E;
-  --chart-4: #F59E0B;
-  --chart-5: #EF4444;
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: rgba(59, 130, 246, 0.5);
 }
 
 @layer base {
@@ -107,69 +103,102 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased selection:bg-blue-500/30 selection:text-white;
     font-family: 'Inter', system-ui, sans-serif;
   }
 }
 
-/* ===== NexCRM Glassmorphism ===== */
-.glass-card {
-  background: var(--nexcrm-surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+/* ===== Apple Glass Base Utilities ===== */
+.apple-glass {
+  background: var(--nexcrm-glass-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
   border: 1px solid var(--nexcrm-glass-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05),
+    0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-.glass-sidebar {
-  background: rgba(13, 15, 18, 0.85);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-right: 1px solid var(--nexcrm-glass-border);
+.apple-glass-heavy {
+  background: rgba(10, 10, 10, 0.6);
+  backdrop-filter: blur(60px) saturate(200%);
+  -webkit-backdrop-filter: blur(60px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* ===== NexCRM Gradient Button ===== */
-.btn-gradient {
+.apple-glass-panel {
+  background: linear-gradient(145deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  border: 1px solid var(--nexcrm-glass-border);
+  border-top-color: rgba(255, 255, 255, 0.15);
+  /* Top reflection */
+  border-left-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+
+
+/* ===== Gradient Button ===== */
+.btn-primary {
   background: linear-gradient(135deg, var(--nexcrm-gradient-start), var(--nexcrm-gradient-end));
   color: white;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   border: none;
-  position: relative;
-  overflow: hidden;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
-.btn-gradient:hover {
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
-  transform: translateY(-1px);
+.btn-primary:hover {
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    0 6px 20px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px) scale(1.02);
 }
 
-.btn-gradient:active {
-  transform: translateY(0);
+.btn-primary:active {
+  transform: translateY(1px) scale(0.98);
 }
 
-/* ===== NexCRM Animations ===== */
+/* ===== Mesh Gradient Animation (Background) ===== */
+@keyframes meshGradient {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+
+  33% {
+    transform: translate(3vw, -5vh) scale(1.1) rotate(2deg);
+  }
+
+  66% {
+    transform: translate(-2vw, 4vh) scale(0.9) rotate(-1deg);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+
+.mesh-blob {
+  position: absolute;
+  filter: blur(120px) saturate(150%);
+  opacity: 0.4;
+  z-index: -1;
+  animation: meshGradient 20s infinite ease-in-out alternate;
+  pointer-events: none;
+}
+
+/* Fluid Animations */
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
   }
 }
 
@@ -183,38 +212,17 @@
   }
 }
 
-@keyframes glow {
-
-  0%,
-  100% {
-    box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
-  }
-
-  50% {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
-  }
-}
-
 .animate-slide-up {
-  animation: slideUp 0.4s ease-out forwards;
-}
-
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out forwards;
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
+  animation: fadeIn 0.4s ease-out forwards;
 }
 
-.animate-glow {
-  animation: glow 2s ease-in-out infinite;
-}
-
-/* Stagger children animations */
 .stagger-children>* {
   opacity: 0;
-  animation: slideUp 0.4s ease-out forwards;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .stagger-children>*:nth-child(1) {
@@ -222,7 +230,7 @@
 }
 
 .stagger-children>*:nth-child(2) {
-  animation-delay: 0.1s;
+  animation-delay: 0.10s;
 }
 
 .stagger-children>*:nth-child(3) {
@@ -230,7 +238,7 @@
 }
 
 .stagger-children>*:nth-child(4) {
-  animation-delay: 0.2s;
+  animation-delay: 0.20s;
 }
 
 .stagger-children>*:nth-child(5) {
@@ -238,7 +246,7 @@
 }
 
 .stagger-children>*:nth-child(6) {
-  animation-delay: 0.3s;
+  animation-delay: 0.30s;
 }
 
 .stagger-children>*:nth-child(7) {
@@ -246,28 +254,10 @@
 }
 
 .stagger-children>*:nth-child(8) {
-  animation-delay: 0.4s;
+  animation-delay: 0.40s;
 }
 
-/* ===== NexCRM Hover Effects ===== */
-.hover-lift {
-  transition: all 0.2s ease;
-}
-
-.hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-.hover-glow {
-  transition: all 0.2s ease;
-}
-
-.hover-glow:hover {
-  box-shadow: 0 0 20px var(--nexcrm-glow);
-}
-
-/* ===== Scrollbar Styling ===== */
+/* Scrollbar (Subtle glass style) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -278,23 +268,29 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2d35;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3d45;
+  background: rgba(255, 255, 255, 0.2);
 }
 
-/* ===== Chat Bubbles ===== */
+/* Chat Bubbles (Immersive Glass) */
 .chat-bubble-sent {
   background: linear-gradient(135deg, var(--nexcrm-gradient-start), var(--nexcrm-gradient-end));
   color: white;
   border-radius: 18px 18px 4px 18px;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .chat-bubble-received {
-  background: var(--card);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
   border: 1px solid var(--nexcrm-glass-border);
+  border-top-color: rgba(255, 255, 255, 0.15);
+  border-left-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   border-radius: 18px 18px 18px 4px;
 }
