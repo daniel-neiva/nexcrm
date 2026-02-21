@@ -84,6 +84,13 @@ export async function GET(request: NextRequest) {
                             name = contactNameMap.get(remoteJid)!
                         } else if (lmPushName && lmPushName !== 'Você' && lmPushName !== phone) {
                             name = lmPushName
+                        } else {
+                            // If no name is found, format the phone beautifully instead of showing raw ID
+                            if (!isGroup && !isLid) {
+                                name = formatBrazilPhone(resolvedPhone || phone)
+                            } else if (isLid && !resolvedPhone) {
+                                name = `Anônimo (LID)`
+                            }
                         }
 
                         // Last message preview
@@ -126,9 +133,10 @@ export async function GET(request: NextRequest) {
                 }
 
                 // Fetch messages and contacts in parallel for name resolution
-                const [rawResult, contacts] = await Promise.all([
+                const [rawResult, contacts, lidMap] = await Promise.all([
                     getMessages(remoteJid, 80),
                     getContacts().catch(() => []),
+                    loadLidMap().catch(() => ({} as Record<string, string>)),
                 ])
 
                 // Build contact name map for sender resolution in groups
@@ -192,7 +200,15 @@ export async function GET(request: NextRequest) {
                         if (participant && contactNameMap.has(participant)) {
                             senderName = contactNameMap.get(participant)!
                         } else if (participant && !senderName) {
-                            senderName = formatPhoneNumber(participant)
+                            const pPhone = formatPhoneNumber(participant)
+                            const isLid = isLidJid(participant)
+                            const resolvedPhone = isLid ? (lidMap[pPhone] || null) : null
+
+                            if (isLid && !resolvedPhone) {
+                                senderName = `Anônimo (LID)`
+                            } else {
+                                senderName = formatBrazilPhone(resolvedPhone || pPhone)
+                            }
                         }
 
                         return {
