@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
                         const isGroup = isGroupJid(remoteJid)
                         const isLid = isLidJid(remoteJid)
-                        let phone = formatPhoneNumber(remoteJid)
+                        const phone = formatPhoneNumber(remoteJid)
 
                         // If LID, try to resolve real phone from mapping
                         const lidMap = getAllLidMappings()
