@@ -29,6 +29,7 @@ interface Message {
     remoteJid: string
     timestamp: string | null
     senderName: string | null
+    senderProfilePicUrl?: string | null
     hasMedia?: boolean
 }
 
@@ -316,7 +317,9 @@ export default function ChatPage() {
                                             ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
                                             : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                                     )}>
-                                        {chat.isGroup ? (
+                                        {chat.profilePicUrl ? (
+                                            <img src={chat.profilePicUrl} alt={chat.name} className="w-full h-full object-cover rounded-full" />
+                                        ) : chat.isGroup ? (
                                             <Users className="w-5 h-5 text-white/90" />
                                         ) : (
                                             <span className="text-sm font-bold text-white/90">
@@ -357,7 +360,9 @@ export default function ChatPage() {
                                     ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
                                     : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                             )}>
-                                {selectedChat.isGroup ? (
+                                {selectedChat.profilePicUrl ? (
+                                    <img src={selectedChat.profilePicUrl} alt={selectedChat.name} className="w-full h-full object-cover rounded-full" />
+                                ) : selectedChat.isGroup ? (
                                     <Users className="w-5 h-5 text-white/90" />
                                 ) : (
                                     <span className="text-sm font-bold text-white/90">
@@ -419,9 +424,18 @@ export default function ChatPage() {
                                                         : "chat-bubble-received font-medium text-white/90 shadow-lg"
                                                 )}
                                             >
-                                                {/* Group sender name */}
+                                                {/* Group sender name and avatar */}
                                                 {selectedChat.isGroup && !msg.fromMe && msg.senderName && (
-                                                    <p className="text-[11px] font-bold text-violet-400 mb-1 tracking-wider uppercase">{msg.senderName}</p>
+                                                    <div className="flex items-center gap-2 mb-1.5">
+                                                        {msg.senderProfilePicUrl ? (
+                                                            <img src={msg.senderProfilePicUrl} alt={msg.senderName} className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-white/10" />
+                                                        ) : (
+                                                            <div className="w-5 h-5 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 ring-1 ring-white/10">
+                                                                <span className="text-[8px] font-bold text-violet-400">{msg.senderName[0].toUpperCase()}</span>
+                                                            </div>
+                                                        )}
+                                                        <p className="text-[11px] font-bold text-violet-400 tracking-wider uppercase truncate">{msg.senderName}</p>
+                                                    </div>
                                                 )}
 
                                                 {/* Media content */}
@@ -508,7 +522,9 @@ export default function ChatPage() {
                                 ? "bg-gradient-to-br from-violet-500/40 to-purple-500/40"
                                 : "bg-gradient-to-br from-blue-500/40 to-violet-500/40"
                         )}>
-                            {selectedChat.isGroup ? (
+                            {selectedChat.profilePicUrl ? (
+                                <img src={selectedChat.profilePicUrl} alt={selectedChat.name} className="w-full h-full object-cover rounded-[2rem]" />
+                            ) : selectedChat.isGroup ? (
                                 <Users className="w-10 h-10 text-white/90" />
                             ) : (
                                 <span className="text-3xl font-bold text-white/90">

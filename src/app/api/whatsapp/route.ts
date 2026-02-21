@@ -37,18 +37,26 @@ export async function GET(request: NextRequest) {
 
                 // Build name maps from contacts and groups
                 const contactNameMap = new Map<string, string>()
+                const contactPicMap = new Map<string, string>()
                 if (Array.isArray(contacts)) {
                     for (const c of contacts) {
                         if (c.remoteJid && c.pushName) {
                             contactNameMap.set(c.remoteJid, c.pushName)
                         }
+                        if (c.remoteJid && c.profilePictureUrl) {
+                            contactPicMap.set(c.remoteJid, c.profilePictureUrl)
+                        }
                     }
                 }
 
                 const groupNameMap = new Map<string, string>()
+                const groupPicMap = new Map<string, string>()
                 if (Array.isArray(groups)) {
                     for (const g of groups) {
                         groupNameMap.set(g.id, g.subject)
+                        if (g.profilePictureUrl) {
+                            groupPicMap.set(g.id, g.profilePictureUrl)
+                        }
                     }
                 }
 
@@ -111,6 +119,7 @@ export async function GET(request: NextRequest) {
                             phoneFormatted: isGroup ? `${(chat as Record<string, unknown>).size || ''} membros` : formatBrazilPhone(resolvedPhone || phone),
                             isGroup,
                             isLid,
+                            profilePicUrl: isGroup ? groupPicMap.get(remoteJid) : (contactPicMap.get(lookupJid) || contactPicMap.get(remoteJid)),
                             lastMessage: lastMsgPreview.substring(0, 100),
                             lastActivity: chat.updatedAt as string || (
                                 lmTimestamp ? new Date(lmTimestamp * 1000).toISOString() : null
@@ -141,10 +150,14 @@ export async function GET(request: NextRequest) {
 
                 // Build contact name map for sender resolution in groups
                 const contactNameMap = new Map<string, string>()
+                const contactPicMap = new Map<string, string>()
                 if (Array.isArray(contacts)) {
                     for (const c of contacts) {
                         if (c.remoteJid && c.pushName) {
                             contactNameMap.set(c.remoteJid, c.pushName)
+                        }
+                        if (c.remoteJid && c.profilePictureUrl) {
+                            contactPicMap.set(c.remoteJid, c.profilePictureUrl)
                         }
                     }
                 }
@@ -222,6 +235,7 @@ export async function GET(request: NextRequest) {
                                 ? new Date((msg.messageTimestamp as number) * 1000).toISOString()
                                 : null,
                             senderName,
+                            senderProfilePicUrl: participant ? contactPicMap.get(participant) : null,
                             hasMedia: ['image', 'audio', 'video', 'document'].includes(type),
                         }
                     })
