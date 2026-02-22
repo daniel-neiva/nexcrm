@@ -3,6 +3,8 @@ import { getAllLidMappings, loadLidMap } from '@/lib/lid-map'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 function isValidChat(jid: string): boolean {
     if (!jid) return false
     if (jid === 'status@broadcast') return false
