@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
                     }))
                 }
 
+                console.log(`[Mark As Read] Sending payload to Evolution: ${JSON.stringify(readPayload)}`)
+
                 const evoRes = await fetch(`${API_URL}/chat/markMessageAsRead/${INSTANCE}`, {
                     method: 'POST',
                     headers: {
@@ -53,7 +55,10 @@ export async function POST(req: NextRequest) {
                 })
 
                 if (!evoRes.ok) {
-                    console.error('[Evolution API] Failed to mark as read:', await evoRes.text())
+                    const errorText = await evoRes.text()
+                    console.error('[Evolution API] Failed to mark as read:', errorText)
+                } else {
+                    console.log('[Evolution API] Mark as read successful')
                 }
             }
         }

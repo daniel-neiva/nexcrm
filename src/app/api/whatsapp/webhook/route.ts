@@ -171,8 +171,7 @@ export async function POST(request: NextRequest) {
 
             // Sync Read Receipts from Mobile to CRM
             if (event === 'messages.update') {
-                const messageUpdate = msg.update || {}
-                const status = messageUpdate.status || ''
+                const status = msg.status || ''
 
                 // 3 equates to READ, 4 equates to PLAYED (Voice notes)
                 // Sometimes Evolution sends string "READ" too
