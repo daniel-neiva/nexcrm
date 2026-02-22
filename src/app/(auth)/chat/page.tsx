@@ -234,7 +234,7 @@ export default function ChatPage() {
     useEffect(() => {
         async function loadChats() {
             try {
-                const res = await fetch("/api/whatsapp?action=chats")
+                const res = await fetch("/api/whatsapp?action=chats", { cache: "no-store" })
                 const data = await res.json()
                 if (Array.isArray(data)) setChats(data)
             } catch (err) {
@@ -251,13 +251,13 @@ export default function ChatPage() {
         setLoadingMessages(true)
         try {
             // Fetch messages
-            const res = await fetch(`/api/whatsapp?action=messages&jid=${encodeURIComponent(chat.id)}`)
+            const res = await fetch(`/api/whatsapp?action=messages&jid=${encodeURIComponent(chat.id)}`, { cache: "no-store" })
             const data = await res.json()
             if (Array.isArray(data)) setMessages(data)
 
             // Lazy load high-res avatar if not already cached
             if (!chat.profilePicUrl) {
-                fetch(`/api/whatsapp/avatar?jid=${encodeURIComponent(chat.id)}`)
+                fetch(`/api/whatsapp/avatar?jid=${encodeURIComponent(chat.id)}`, { cache: "no-store" })
                     .then(r => r.json())
                     .then(data => {
                         if (data.profilePictureUrl) {
