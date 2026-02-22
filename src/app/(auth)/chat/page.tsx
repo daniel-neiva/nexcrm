@@ -156,6 +156,8 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
     }
 }
 
+import { createClient } from "@/lib/supabase/client"
+
 export default function ChatPage() {
     const [chats, setChats] = useState<Chat[]>([])
     const [messages, setMessages] = useState<Message[]>([])
@@ -168,6 +170,65 @@ export default function ChatPage() {
     const [filter, setFilter] = useState<"all" | "personal" | "groups">("all")
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+    const supabase = createClient()
+
+    // Realtime Incoming Messages
+    useEffect(() => {
+        const channel = supabase.channel('whatsapp_updates')
+            .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+                const incomingMsg = payload.message as Message
+                const incomingChat = payload.chat as { id: string, unreadCount: number }
+
+                // Check if it belongs to selected chat
+                if (selectedChat?.id === incomingMsg.remoteJid) {
+                    setMessages(prev => {
+                        // Avoid duplicates
+                        if (prev.some(m => m.id === incomingMsg.id)) return prev
+                        return [...prev, incomingMsg]
+                    })
+                    // Auto-mark read since user is actively looking at this chat
+                    if (!incomingMsg.fromMe) {
+                        fetch("/api/whatsapp/read", {
+                            method: "POST",
+                            body: JSON.stringify({ remoteJid: incomingMsg.remoteJid })
+                        }).catch(console.error)
+                    }
+                }
+
+                // Update chats list (bump to top, update preview text, unread count)
+                setChats(prev => {
+                    const chatIndex = prev.findIndex(c => c.id === incomingMsg.remoteJid)
+                    if (chatIndex === -1) {
+                        // We might want to reload chats if a brand new conversation arrives
+                        return prev
+                    }
+                    const updatedChat = {
+                        ...prev[chatIndex],
+                        lastMessage: incomingMsg.content,
+                        lastActivity: incomingMsg.timestamp,
+                        unread: (selectedChat?.id === incomingMsg.remoteJid) ? 0 : incomingChat.unreadCount
+                    }
+                    const newChats = [...prev]
+                    newChats.splice(chatIndex, 1) // remove
+                    newChats.unshift(updatedChat) // put at top
+                    return newChats
+                })
+            })
+            .on('broadcast', { event: 'read_receipt' }, ({ payload }) => {
+                const { chat } = payload
+                if (chat?.id) {
+                    setChats(prev => prev.map(c =>
+                        c.id === chat.id ? { ...c, unread: 0 } : c
+                    ))
+                }
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [selectedChat])
 
     // Load chats
     useEffect(() => {
@@ -189,9 +250,33 @@ export default function ChatPage() {
     const loadMessages = useCallback(async (chat: Chat) => {
         setLoadingMessages(true)
         try {
+            // Fetch messages
             const res = await fetch(`/api/whatsapp?action=messages&jid=${encodeURIComponent(chat.id)}`)
             const data = await res.json()
             if (Array.isArray(data)) setMessages(data)
+
+            // Lazy load high-res avatar if not already cached
+            if (!chat.profilePicUrl) {
+                fetch(`/api/whatsapp/avatar?jid=${encodeURIComponent(chat.id)}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.profilePictureUrl) {
+                            setSelectedChat(prev => prev ? { ...prev, profilePicUrl: data.profilePictureUrl } : prev)
+                            setChats(prev => prev.map(c => c.id === chat.id ? { ...c, profilePicUrl: data.profilePictureUrl } : c))
+                        }
+                    })
+                    .catch(console.error)
+            }
+
+            // Clear unread count locally and sync horizontally with WhatsApp
+            if (chat.unread > 0) {
+                fetch("/api/whatsapp/read", {
+                    method: "POST",
+                    body: JSON.stringify({ remoteJid: chat.id })
+                }).catch(console.error)
+
+                setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread: 0 } : c))
+            }
         } catch (err) {
             console.error("Erro ao carregar mensagens:", err)
         } finally {

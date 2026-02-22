@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ===== NexCRM Schema =====
@@ -64,11 +65,13 @@ model Contact {
 }
 
 model Conversation {
-  id        String             @id @default(cuid())
-  status    ConversationStatus @default(OPEN)
-  channel   Channel            @default(WEB)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id           String             @id @default(cuid())
+  whatsappJid  String?            @unique
+  status       ConversationStatus @default(OPEN)
+  channel      Channel            @default(WEB)
+  unreadCount  Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   accountId  String
   account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -87,13 +90,18 @@ model Conversation {
 }
 
 model Message {
-  id        String      @id @default(cuid())
-  content   String
-  type      MessageType @default(TEXT)
-  sender    SenderType
-  fileUrl   String?
-  fileName  String?
-  createdAt DateTime    @default(now())
+  id           String      @id @default(cuid())
+  whatsappId   String?     @unique
+  whatsappJid  String?
+  content      String
+  type         String      @default("text") // text, image, video, audio, document, sticker
+  fromMe       Boolean     @default(false)
+  isRead       Boolean     @default(false)
+  sender       SenderType
+  senderName   String?
+  fileUrl      String?
+  fileName     String?
+  createdAt    DateTime    @default(now())
 
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

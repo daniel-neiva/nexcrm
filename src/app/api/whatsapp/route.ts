@@ -1,12 +1,14 @@
 import { getChats, getMessages, getGroups, getContacts, formatPhoneNumber, isGroupJid, isLidJid } from '@/lib/evolution'
 import { getAllLidMappings, loadLidMap } from '@/lib/lid-map'
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
 function isValidChat(jid: string): boolean {
     if (!jid) return false
     if (jid === 'status@broadcast') return false
     if (jid === '0@s.whatsapp.net') return false
     if (jid.endsWith('@broadcast')) return false
+    // sometimes Evolution returns group aliases, keep only standard nodes
     return jid.endsWith('@s.whatsapp.net') || jid.endsWith('@g.us') || jid.endsWith('@lid')
 }
 
@@ -27,13 +29,25 @@ export async function GET(request: NextRequest) {
 
         switch (action) {
             case 'chats': {
-                // Fetch chats, groups, contacts and LID mappings in parallel
-                const [rawChats, groups, contacts] = await Promise.all([
+                // Fetch chats, groups, contacts, LID mappings, and Prisma DB cache in parallel
+                const [rawChats, groups, contacts, _lidLoad, dbConversations, dbContacts] = await Promise.all([
                     getChats(),
                     getGroups().catch(() => []),
                     getContacts().catch(() => []),
                     loadLidMap().catch(() => ({})),
+                    prisma.conversation.findMany({ select: { whatsappJid: true, unreadCount: true } }).catch(() => []),
+                    prisma.contact.findMany({ select: { phone: true, avatarUrl: true } }).catch(() => [])
                 ])
+
+                const dbUnreadMap = new Map<string, number>()
+                for (const conv of dbConversations) {
+                    if (conv.whatsappJid) dbUnreadMap.set(conv.whatsappJid, conv.unreadCount)
+                }
+
+                const dbAvatarMap = new Map<string, string>()
+                for (const c of dbContacts) {
+                    if (c.phone && c.avatarUrl) dbAvatarMap.set(c.phone, c.avatarUrl)
+                }
 
                 // Build name maps from contacts and groups
                 const contactNameMap = new Map<string, string>()
@@ -60,6 +74,8 @@ export async function GET(request: NextRequest) {
                     }
                 }
 
+                const lidMap = getAllLidMappings()
+
                 const allChats = (Array.isArray(rawChats) ? rawChats : [])
                     .filter((chat) => isValidChat(chat.remoteJid as string))
                     .map((chat) => {
@@ -75,7 +91,6 @@ export async function GET(request: NextRequest) {
                         const phone = formatPhoneNumber(remoteJid)
 
                         // If LID, try to resolve real phone from mapping
-                        const lidMap = getAllLidMappings()
                         let resolvedPhone: string | null = null
                         if (isLid && lidMap[phone]) {
                             resolvedPhone = lidMap[phone]
@@ -110,7 +125,18 @@ export async function GET(request: NextRequest) {
                         if (!lastMsgPreview && lmMessage?.videoMessage) lastMsgPreview = '🎬 Vídeo'
                         if (!lastMsgPreview && lmMessage?.documentMessage) lastMsgPreview = '📄 Documento'
                         if (!lastMsgPreview && lmMessage?.stickerMessage) lastMsgPreview = '🏷️ Figurinha'
+                        if (!lastMsgPreview && lmMessage?.buttonsResponseMessage) lastMsgPreview = '🔘 Resposta de Botão'
+                        if (!lastMsgPreview && lmMessage?.listResponseMessage) lastMsgPreview = '📋 Resposta de Lista'
+                        if (!lastMsgPreview && lmMessage?.templateButtonReplyMessage) lastMsgPreview = '🔘 Resposta de Template'
                         if (lmFromMe && lastMsgPreview) lastMsgPreview = `Você: ${lastMsgPreview}`
+
+                        const unreadCount = dbUnreadMap.has(remoteJid)
+                            ? dbUnreadMap.get(remoteJid)!
+                            : ((chat.unreadCount as number) || 0)
+
+                        const profilePicUrl = isGroup
+                            ? groupPicMap.get(remoteJid)
+                            : (dbAvatarMap.get(lookupJid) || dbAvatarMap.get(remoteJid) || contactPicMap.get(lookupJid) || contactPicMap.get(remoteJid))
 
                         return {
                             id: remoteJid,
@@ -119,12 +145,12 @@ export async function GET(request: NextRequest) {
                             phoneFormatted: isGroup ? `${(chat as Record<string, unknown>).size || ''} membros` : formatBrazilPhone(resolvedPhone || phone),
                             isGroup,
                             isLid,
-                            profilePicUrl: isGroup ? groupPicMap.get(remoteJid) : (contactPicMap.get(lookupJid) || contactPicMap.get(remoteJid)),
+                            profilePicUrl,
                             lastMessage: lastMsgPreview.substring(0, 100),
                             lastActivity: chat.updatedAt as string || (
                                 lmTimestamp ? new Date(lmTimestamp * 1000).toISOString() : null
                             ),
-                            unread: (chat.unreadCount as number) || 0,
+                            unread: unreadCount,
                         }
                     })
                     .sort((a, b) => {
@@ -186,6 +212,9 @@ export async function GET(request: NextRequest) {
                             ((message?.imageMessage as Record<string, unknown>)?.caption as string) ||
                             ((message?.videoMessage as Record<string, unknown>)?.caption as string) ||
                             ((message?.documentMessage as Record<string, unknown>)?.fileName as string) ||
+                            ((message?.buttonsResponseMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                            ((message?.listResponseMessage as Record<string, unknown>)?.title as string) ||
+                            ((message?.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
                             ''
 
                         // Determine media type
