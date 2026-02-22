@@ -20,7 +20,12 @@ export async function GET(request: NextRequest) {
             try {
                 // Save to Prisma cache
                 await prisma.contact.updateMany({
-                    where: { phone: number },
+                    where: {
+                        OR: [
+                            { phone: number },
+                            { phone: number.replace('@s.whatsapp.net', '') }
+                        ]
+                    },
                     data: { avatarUrl: profilePictureUrl }
                 })
             } catch (e) {

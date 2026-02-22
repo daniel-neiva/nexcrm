@@ -176,25 +176,37 @@ export async function POST(request: NextRequest) {
                 // 3 equates to READ, 4 equates to PLAYED (Voice notes)
                 // Sometimes Evolution sends string "READ" too
                 if (status === 'READ' || status === 3 || status === 4) {
-                    // Update database
-                    await prisma.conversation.updateMany({
-                        where: { whatsappJid: remoteJid },
-                        data: { unreadCount: 0 }
-                    })
+                    const updateMsgId = msg.key?.id || msg.keyId || msg.messageId || '';
+                    if (!updateMsgId) continue;
 
-                    await prisma.message.updateMany({
-                        where: { whatsappJid: remoteJid, isRead: false },
-                        data: { isRead: true }
-                    })
+                    const existingMsg = await prisma.message.findUnique({
+                        where: { whatsappId: updateMsgId },
+                        select: { whatsappJid: true }
+                    });
 
-                    // Broadcast read event to clients
-                    await supabaseAdmin.channel('whatsapp_updates').send({
-                        type: 'broadcast',
-                        event: 'read_receipt',
-                        payload: {
-                            chat: { id: remoteJid, unreadCount: 0 }
-                        }
-                    })
+                    if (existingMsg) {
+                        const realJid = existingMsg.whatsappJid;
+
+                        // Update database
+                        await prisma.conversation.updateMany({
+                            where: { whatsappJid: realJid },
+                            data: { unreadCount: 0 }
+                        })
+
+                        await prisma.message.updateMany({
+                            where: { whatsappJid: realJid, isRead: false },
+                            data: { isRead: true }
+                        })
+
+                        // Broadcast read event to clients
+                        await supabaseAdmin.channel('whatsapp_updates').send({
+                            type: 'broadcast',
+                            event: 'read_receipt',
+                            payload: {
+                                chat: { id: realJid, unreadCount: 0 }
+                            }
+                        })
+                    }
                 }
             }
         }
