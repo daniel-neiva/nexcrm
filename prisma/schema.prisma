@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "rhel-openssl-1.0.x", "darwin-arm64"]
 }
 
 datasource db {
@@ -65,13 +66,15 @@ model Contact {
 }
 
 model Conversation {
-  id           String             @id @default(cuid())
-  whatsappJid  String?            @unique
-  status       ConversationStatus @default(OPEN)
-  channel      Channel            @default(WEB)
-  unreadCount  Int                @default(0)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  whatsappJid         String?            @unique
+  status              ConversationStatus @default(OPEN)
+  channel             Channel            @default(WEB)
+  unreadCount         Int                @default(0)
+  readOverrideUntil   DateTime?
+  lastReadMessageId   String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   accountId  String
   account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -113,10 +116,30 @@ model Message {
 model Agent {
   id          String @id @default(cuid())
   name        String
-  voiceType   VoiceType @default(MASCULINE)
+  roleDescription String @db.Text @default("Agente de atendimento corporativo.")
+  
+  // Settings - Voice & Timing
+  voiceType   VoiceType @default(FEMALE)
+  messageGrouping Boolean @default(true)
+  groupingDelay Int @default(15) // seconds before reply
+  
+  // Settings - Behavior
+  humanHandoffRules String @db.Text @default("Redirecione para humano em caso de reclamação.")
+  timeBasedRouting Boolean @default(false)
+  
+  // Settings - Company Context
+  companyName String @default("Minha Empresa")
+  companyUrl  String?
+  companyDescription String? @db.Text
+  
+  // Settings - Personality
+  communicationStyle String @default("PROFESSIONAL") // Mapped from Enums later
+  
+  // AI System Params
   prompt      String    @db.Text
-  flow        String    @default("qualification")
-  personality String    @default("consultive")
+  flow        String    @default("QUALIFICATION")
+  
+  // Operational
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -125,6 +148,30 @@ model Agent {
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   conversations Conversation[]
+  knowledgeData AgentKnowledge[]
+  attributes AgentAttribute[]
+}
+
+model AgentKnowledge {
+  id        String   @id @default(cuid())
+  tagName   String   // e.g "Postura do Agente", "Tabela de Preços"
+  content   String   @db.Text
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AgentAttribute {
+  id        String   @id @default(cuid())
+  fieldType String   // e.g "NOME", "CPF", "ENDERECO", "TELEFONE"
+  description String @db.Text
+  isRequired Boolean @default(false)
+  
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Label {
@@ -194,6 +241,20 @@ model Notification {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model WhatsappEventRaw {
+  id          String    @id @default(uuid())
+  receivedAt  DateTime  @default(now())
+  instance    String
+  eventType   String
+  eventKey    String    @unique
+  payload     Json
+  processed   Boolean   @default(false)
+  processedAt DateTime?
+  error       String?
+
+  @@index([processed, receivedAt(sort: Desc)])
+}
+
 // ===== Enums =====
 
 enum Role {
@@ -231,6 +292,6 @@ enum SenderType {
 }
 
 enum VoiceType {
-  MASCULINE
-  FEMININE
+  MALE
+  FEMALE
 }

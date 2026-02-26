@@ -1,0 +1,29 @@
+
+> nexcrm@0.1.0 dev
+> next dev
+
+⚠ `eslint` configuration in next.config.ts is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ Invalid next.config.ts options detected: 
+⚠     Unrecognized key(s) in object: 'eslint'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.25:3000
+- Environments: .env.local, .env
+
+✓ Starting...
+✓ Ready in 3.1s
+Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[Webhook] Processed Event: messages.upsert, messages: 1
+ POST /api/whatsapp/webhook 200 in 7.7s (compile: 103ms, proxy.ts: 139ms, render: 7.4s)
+Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.
+[Processor] Fatal Error: TypeError: Cannot read properties of undefined (reading 'update')
+    at POST (src/app/api/whatsapp/processor/route.ts:230:43)
+  228 |         // Mark event as processed cleanly
+  229 |         if (rawId) {
+> 230 |             await prisma.whatsappEventRaw.update({
+      |                                           ^
+  231 |                 where: { id: rawId },
+  232 |                 data: { processed: true, processedAt: new Date() }
+  233 |             })
+ POST /api/whatsapp/processor 500 in 6.8s (compile: 746ms, proxy.ts: 178ms, render: 5.9s)

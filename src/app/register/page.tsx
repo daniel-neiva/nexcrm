@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 
 export default function RegisterPage() {
     const [name, setName] = useState("")
+    const [companyName, setCompanyName] = useState("")
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
     const [showPassword, setShowPassword] = useState(false)
@@ -35,6 +36,7 @@ export default function RegisterPage() {
             options: {
                 data: {
                     name,
+                    companyName,
                 },
                 emailRedirectTo: `${window.location.origin}/auth/callback`,
             },
@@ -133,6 +135,21 @@ export default function RegisterPage() {
                                 placeholder="Seu nome completo"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
+                                className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-[#64748B] focus:ring-blue-500/30 focus:border-blue-500/50 h-11 rounded-xl"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-[#94A3B8]">Empresa</label>
+                        <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+                            <Input
+                                type="text"
+                                placeholder="Nome da sua empresa"
+                                value={companyName}
+                                onChange={(e) => setCompanyName(e.target.value)}
                                 className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-[#64748B] focus:ring-blue-500/30 focus:border-blue-500/50 h-11 rounded-xl"
                                 required
                             />

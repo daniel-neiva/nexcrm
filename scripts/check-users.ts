@@ -1,0 +1,23 @@
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+async function main() {
+    const users = await prisma.user.findMany({
+        include: {
+            account: true
+        }
+    })
+    console.log('--- USER LIST ---')
+    console.log(JSON.stringify(users, null, 2))
+    console.log('-----------------')
+}
+
+main()
+    .catch((e) => {
+        console.error(e)
+        process.exit(1)
+    })
+    .finally(async () => {
+        await prisma.$disconnect()
+    })

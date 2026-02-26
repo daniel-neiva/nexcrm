@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const webhookUrl = `${baseUrl.replace(/\/$/, '')}/api/whatsapp/webhook`
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://doietkbuscrcpyujmmdp.supabase.co'
+        const webhookUrl = `${supabaseUrl}/functions/v1/evo-webhook`
 
         const result = await setWebhook(webhookUrl)
 

@@ -1,0 +1,41 @@
+
+> nexcrm@0.1.0 dev
+> next dev
+
+⚠ `eslint` configuration in next.config.ts is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ Invalid next.config.ts options detected: 
+⚠     Unrecognized key(s) in object: 'eslint'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.7:3000
+- Environments: .env.local, .env
+
+✓ Starting...
+✓ Ready in 831ms
+[Webhook] Error: Error [PrismaClientInitializationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].account.findFirst()` invocation in
+/Users/daniel/CRM Daniel/nexcrm/.next/dev/server/chunks/[root-of-the-server]__ac3fc99c._.js:227:174
+
+  224 }
+  225 // We need an Account ID and Contact ID to save in Prisma CRM structure
+  226 // For MVP, we fetch the FIRST account, or create a dummy one
+→ 227 let account = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].account.findFirst(
+Can't reach database server at `db.doietkbuscrcpyujmmdp.supabase.co:5432`
+
+Please make sure your database server is running at `db.doietkbuscrcpyujmmdp.supabase.co:5432`.
+    at <unknown> (src/app/api/whatsapp/webhook/route.ts:87:52)
+    at async POST (src/app/api/whatsapp/webhook/route.ts:87:31)
+  85 |                 // We need an Account ID and Contact ID to save in Prisma CRM structure
+  86 |                 // For MVP, we fetch the FIRST account, or create a dummy one
+> 87 |                 let account = await prisma.account.findFirst()
+     |                                                    ^
+  88 |                 if (!account) {
+  89 |                     account = await prisma.account.create({
+  90 |                         data: { name: 'Conta Principal', plan: 'pro' } {
+  clientVersion: '5.22.0',
+  errorCode: undefined
+}
+ POST /api/whatsapp/webhook 200 in 1240ms (compile: 703ms, proxy.ts: 160ms, render: 377ms)
+  Reload env: .env.local
+[?25h

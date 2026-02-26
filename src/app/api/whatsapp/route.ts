@@ -37,13 +37,19 @@ export async function GET(request: NextRequest) {
                     getGroups().catch(() => []),
                     getContacts().catch(() => []),
                     loadLidMap().catch(() => ({})),
-                    prisma.conversation.findMany({ select: { whatsappJid: true, unreadCount: true } }).catch(() => []),
+                    prisma.conversation.findMany({ select: { whatsappJid: true, unreadCount: true, readOverrideUntil: true } }).catch(() => []),
                     prisma.contact.findMany({ select: { phone: true, avatarUrl: true } }).catch(() => [])
                 ])
 
                 const dbUnreadMap = new Map<string, number>()
+                const dbUnreadOverrides = new Map<string, boolean>()
                 for (const conv of dbConversations) {
-                    if (conv.whatsappJid) dbUnreadMap.set(conv.whatsappJid, conv.unreadCount)
+                    if (conv.whatsappJid) {
+                        dbUnreadMap.set(conv.whatsappJid, conv.unreadCount)
+                        if (conv.readOverrideUntil && new Date(conv.readOverrideUntil) > new Date()) {
+                            dbUnreadOverrides.set(conv.whatsappJid, true)
+                        }
+                    }
                 }
 
                 const dbAvatarMap = new Map<string, string>()
@@ -94,8 +100,19 @@ export async function GET(request: NextRequest) {
 
                         // If LID, try to resolve real phone from mapping
                         let resolvedPhone: string | null = null
-                        if (isLid && lidMap[phone]) {
-                            resolvedPhone = lidMap[phone]
+                        if (isLid) {
+                            if (lidMap[phone]) {
+                                resolvedPhone = lidMap[phone]
+                            } else {
+                                const key = lastMessage?.key as Record<string, unknown> | undefined
+                                const remoteJidAlt = key?.remoteJidAlt as string | undefined
+                                const participantAlt = key?.participantAlt as string | undefined
+                                if (remoteJidAlt && remoteJidAlt.includes('@s.whatsapp.net')) {
+                                    resolvedPhone = remoteJidAlt.split('@')[0]
+                                } else if (participantAlt && participantAlt.includes('@s.whatsapp.net')) {
+                                    resolvedPhone = participantAlt.split('@')[0]
+                                }
+                            }
                         }
 
                         // Resolve name: LID resolved contact > contacts DB > lastMessage pushName > phone
@@ -119,25 +136,55 @@ export async function GET(request: NextRequest) {
                         }
 
                         // Last message preview
-                        const conv = (lmMessage?.conversation as string) || ''
-                        const extText = (lmMessage?.extendedTextMessage as Record<string, unknown>)?.text as string || ''
-                        let lastMsgPreview = conv || extText
-                        if (!lastMsgPreview && lmMessage?.imageMessage) lastMsgPreview = '📷 Imagem'
-                        if (!lastMsgPreview && lmMessage?.audioMessage) lastMsgPreview = '🎵 Áudio'
-                        if (!lastMsgPreview && lmMessage?.videoMessage) lastMsgPreview = '🎬 Vídeo'
-                        if (!lastMsgPreview && lmMessage?.documentMessage) lastMsgPreview = '📄 Documento'
-                        if (!lastMsgPreview && lmMessage?.stickerMessage) lastMsgPreview = '🏷️ Figurinha'
-                        if (!lastMsgPreview && lmMessage?.buttonsResponseMessage) lastMsgPreview = '🔘 Resposta de Botão'
-                        if (!lastMsgPreview && lmMessage?.listResponseMessage) lastMsgPreview = '📋 Resposta de Lista'
-                        if (!lastMsgPreview && lmMessage?.templateButtonReplyMessage) lastMsgPreview = '🔘 Resposta de Template'
+                        const extractedText =
+                            (lmMessage?.conversation as string) ||
+                            ((lmMessage?.extendedTextMessage as Record<string, unknown>)?.text as string) ||
+                            ((lmMessage?.imageMessage as Record<string, unknown>)?.caption as string) ||
+                            ((lmMessage?.videoMessage as Record<string, unknown>)?.caption as string) ||
+                            ((lmMessage?.documentWithCaptionMessage as any)?.message?.documentMessage?.caption as string) ||
+                            ((lmMessage?.documentMessage as Record<string, unknown>)?.fileName as string) ||
+                            ((lmMessage?.buttonsResponseMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                            ((lmMessage?.listResponseMessage as Record<string, unknown>)?.title as string) ||
+                            ((lmMessage?.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                            ((lmMessage?.templateMessage as any)?.interactiveMessageTemplate?.body?.text as string) ||
+                            ((lmMessage?.templateMessage as any)?.hydratedTemplate?.bodyText as string) ||
+                            ((lmMessage?.templateMessage as any)?.hydratedTemplate?.hydratedContentText as string) ||
+                            ((lmMessage?.templateMessage as any)?.hydratedFourRowTemplate?.hydratedContentText as string) ||
+                            ((lmMessage?.interactiveMessage as any)?.body?.text as string) ||
+                            ((lmMessage?.interactiveMessage as any)?.header?.title as string) ||
+                            ((lmMessage?.buttonsMessage as any)?.contentText as string) ||
+                            ((lmMessage?.listMessage as any)?.description as string) ||
+                            ((lmMessage?.listMessage as any)?.title as string) ||
+                            ((lmMessage?.viewOnceMessage as any)?.message?.imageMessage?.caption as string) ||
+                            ((lmMessage?.viewOnceMessage as any)?.message?.videoMessage?.caption as string) ||
+                            ((lmMessage?.viewOnceMessageV2 as any)?.message?.imageMessage?.caption as string) ||
+                            ((lmMessage?.viewOnceMessageV2 as any)?.message?.videoMessage?.caption as string) ||
+                            ''
+
+                        let lastMsgPreview = extractedText
+
+                        if (!lastMsgPreview) {
+                            if (lmMessage?.imageMessage || (lmMessage?.templateMessage as any)?.interactiveMessageTemplate?.header?.imageMessage || (lmMessage?.templateMessage as any)?.hydratedTemplate?.imageMessage) lastMsgPreview = '📷 Imagem'
+                            else if (lmMessage?.audioMessage) lastMsgPreview = '🎵 Áudio'
+                            else if (lmMessage?.videoMessage || (lmMessage?.templateMessage as any)?.interactiveMessageTemplate?.header?.videoMessage || (lmMessage?.templateMessage as any)?.hydratedTemplate?.videoMessage) lastMsgPreview = '🎬 Vídeo'
+                            else if (lmMessage?.documentMessage || lmMessage?.documentWithCaptionMessage) lastMsgPreview = '📄 Documento'
+                            else if (lmMessage?.stickerMessage) lastMsgPreview = '🏷️ Figurinha'
+                            else if (lmMessage?.buttonsResponseMessage) lastMsgPreview = '🔘 Resposta de Botão'
+                            else if (lmMessage?.listResponseMessage) lastMsgPreview = '📋 Resposta de Lista'
+                            else if (lmMessage?.templateButtonReplyMessage) lastMsgPreview = '🔘 Resposta de Template'
+                            else if (lmMessage?.templateMessage) lastMsgPreview = '🔘 Template Interativo'
+                        }
                         if (lmFromMe && lastMsgPreview) lastMsgPreview = `Você: ${lastMsgPreview}`
 
-                        const unreadCount = dbUnreadMap.has(remoteJid)
-                            ? dbUnreadMap.get(remoteJid)!
-                            : ((chat.unreadCount as number) || 0)
+                        const isOverride = dbUnreadOverrides.has(remoteJid)
+                        const unreadCount = isOverride ? 0 : (
+                            dbUnreadMap.has(remoteJid)
+                                ? dbUnreadMap.get(remoteJid)!
+                                : ((chat.unreadCount as number) || 0)
+                        )
 
                         const profilePicUrl = isGroup
-                            ? groupPicMap.get(remoteJid)
+                            ? (groupPicMap.get(remoteJid) || dbAvatarMap.get(remoteJid))
                             : (dbAvatarMap.get(lookupJid) || dbAvatarMap.get(remoteJid) || contactPicMap.get(lookupJid) || contactPicMap.get(remoteJid))
 
                         return {
@@ -208,34 +255,66 @@ export async function GET(request: NextRequest) {
                         const message = msg.message as Record<string, unknown>
 
                         // Extract text content
-                        const content =
+                        let content = Object.values(message || {}).length === 0 ? '' : (
                             (message?.conversation as string) ||
                             ((message?.extendedTextMessage as Record<string, unknown>)?.text as string) ||
                             ((message?.imageMessage as Record<string, unknown>)?.caption as string) ||
                             ((message?.videoMessage as Record<string, unknown>)?.caption as string) ||
+                            ((message?.documentWithCaptionMessage as any)?.message?.documentMessage?.caption as string) ||
                             ((message?.documentMessage as Record<string, unknown>)?.fileName as string) ||
                             ((message?.buttonsResponseMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
                             ((message?.listResponseMessage as Record<string, unknown>)?.title as string) ||
                             ((message?.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                            ((message?.templateMessage as any)?.interactiveMessageTemplate?.body?.text as string) ||
+                            ((message?.templateMessage as any)?.hydratedTemplate?.bodyText as string) ||
+                            ((message?.templateMessage as any)?.hydratedTemplate?.hydratedContentText as string) ||
+                            ((message?.templateMessage as any)?.hydratedFourRowTemplate?.hydratedContentText as string) ||
+                            ((message?.interactiveMessage as any)?.body?.text as string) ||
+                            ((message?.interactiveMessage as any)?.header?.title as string) ||
+                            ((message?.buttonsMessage as any)?.contentText as string) ||
+                            ((message?.listMessage as any)?.description as string) ||
+                            ((message?.listMessage as any)?.title as string) ||
+                            ((message?.viewOnceMessage as any)?.message?.imageMessage?.caption as string) ||
+                            ((message?.viewOnceMessage as any)?.message?.videoMessage?.caption as string) ||
+                            ((message?.viewOnceMessageV2 as any)?.message?.imageMessage?.caption as string) ||
+                            ((message?.viewOnceMessageV2 as any)?.message?.videoMessage?.caption as string) ||
                             ''
+                        )
 
                         // Determine media type
                         let type = 'text'
                         let mimetype = ''
-                        if (message?.imageMessage) {
+                        let hasMedia = false
+
+                        const imgNode = message?.imageMessage || (message?.viewOnceMessage as any)?.message?.imageMessage || (message?.viewOnceMessageV2 as any)?.message?.imageMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.imageMessage || (message?.templateMessage as any)?.hydratedTemplate?.imageMessage
+                        const vidNode = message?.videoMessage || (message?.viewOnceMessage as any)?.message?.videoMessage || (message?.viewOnceMessageV2 as any)?.message?.videoMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.videoMessage || (message?.templateMessage as any)?.hydratedTemplate?.videoMessage
+                        const docNode = message?.documentMessage || (message?.documentWithCaptionMessage as any)?.message?.documentMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.documentMessage || (message?.templateMessage as any)?.hydratedTemplate?.documentMessage
+
+                        if (imgNode) {
                             type = 'image'
-                            mimetype = ((message.imageMessage as Record<string, unknown>)?.mimetype as string) || 'image/jpeg'
+                            hasMedia = true
+                            mimetype = (imgNode as any)?.mimetype || 'image/jpeg'
                         } else if (message?.audioMessage) {
                             type = 'audio'
+                            hasMedia = true
                             mimetype = ((message.audioMessage as Record<string, unknown>)?.mimetype as string) || 'audio/ogg'
-                        } else if (message?.videoMessage) {
+                        } else if (vidNode) {
                             type = 'video'
-                            mimetype = ((message.videoMessage as Record<string, unknown>)?.mimetype as string) || 'video/mp4'
-                        } else if (message?.documentMessage) {
+                            hasMedia = true
+                            mimetype = (vidNode as any)?.mimetype || 'video/mp4'
+                        } else if (docNode) {
                             type = 'document'
-                            mimetype = ((message.documentMessage as Record<string, unknown>)?.mimetype as string) || ''
+                            hasMedia = true
+                            mimetype = (docNode as any)?.mimetype || 'application/pdf'
                         } else if (message?.stickerMessage) {
                             type = 'sticker'
+                            hasMedia = true
+                            mimetype = 'image/webp'
+                        }
+
+                        // If no text, and no standard media is identified, skip or save generic
+                        if (!content && !hasMedia) {
+                            content = 'Mensagem de sistema ou mídia não suportada'
                         }
 
                         // Resolve sender name: participant remoteJid -> contact name -> pushName
@@ -246,7 +325,18 @@ export async function GET(request: NextRequest) {
                         } else if (participant && !senderName) {
                             const pPhone = formatPhoneNumber(participant)
                             const isLid = isLidJid(participant)
-                            const resolvedPhone = isLid ? (lidMap[pPhone] || null) : null
+                            let resolvedPhone = isLid ? (lidMap[pPhone] || null) : null
+
+                            if (isLid && !resolvedPhone) {
+                                const k = key as any
+                                const remoteJidAlt = k.remoteJidAlt as string | undefined
+                                const participantAlt = k.participantAlt as string | undefined
+                                if (remoteJidAlt && remoteJidAlt.includes('@s.whatsapp.net')) {
+                                    resolvedPhone = remoteJidAlt.split('@')[0]
+                                } else if (participantAlt && participantAlt.includes('@s.whatsapp.net')) {
+                                    resolvedPhone = participantAlt.split('@')[0]
+                                }
+                            }
 
                             if (isLid && !resolvedPhone) {
                                 senderName = `Anônimo (LID)`

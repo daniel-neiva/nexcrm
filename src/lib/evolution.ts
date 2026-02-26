@@ -153,7 +153,10 @@ export async function setWebhook(webhookUrl: string) {
                 url: webhookUrl,
                 webhookByEvents: false,
                 webhookBase64: false,
-                events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE'],
+                events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'CHATS_UPDATE', 'CHATS_UPSERT'],
+                headers: {
+                    "x-evo-token": "nexcrm-secure-1234"
+                }
             },
         }),
     })

@@ -1,0 +1,395 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getProfilePicture, getChats } from '@/lib/evolution'
+import { setLidPhone } from '@/lib/lid-map'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { prisma } from '@/lib/prisma'
+
+/**
+ * Background Processor for Evolution API events stored in WhatsappEventRaw.
+ * Triggered by Supabase Postgres Database Webhook on INSERT.
+ */
+export async function POST(request: NextRequest) {
+    let rawId: string | undefined;
+
+    try {
+        const body = await request.json()
+
+        // Verify it's a Supabase Database Webhook for our raw events table
+        if (body.type !== 'INSERT' || body.table !== 'WhatsappEventRaw') {
+            return NextResponse.json({ status: 'ignored' })
+        }
+
+        const rawEvent = body.record
+        if (!rawEvent || rawEvent.processed) {
+            return NextResponse.json({ status: 'already processed' })
+        }
+
+        rawId = rawEvent.id;
+
+        const event = rawEvent.eventType || ''
+        const payload = rawEvent.payload || {}
+        const data = payload.data || payload
+
+        const messages = Array.isArray(data) ? data : [data]
+
+        for (const msg of messages) {
+            const key = msg.key || {}
+            const remoteJid: string = key.remoteJid || msg.remoteJid || ''
+            const senderPn: string = msg.senderPn || ''
+            const messageId: string = key.id || msg.messageId || ''
+            const pushName: string = msg.pushName || ''
+            const fromMe: boolean = key.fromMe || false
+
+            if (!remoteJid || !messageId) continue
+
+            // LID mapping logic
+            if (remoteJid.endsWith('@lid') && senderPn) {
+                const phone = senderPn.replace('@s.whatsapp.net', '').replace('@lid', '')
+                setLidPhone(remoteJid, phone)
+            }
+            const participant: string = key.participant || msg.participant || ''
+            if (participant.endsWith('@lid') && senderPn) {
+                const phone = senderPn.replace('@s.whatsapp.net', '').replace('@lid', '')
+                setLidPhone(participant, phone)
+            }
+
+            // Sync to Database if it is a real message creation event
+            if (event === 'messages.upsert') {
+                const m = msg.message || {}
+
+                // Determine message content
+                let content = Object.values(m || {}).length === 0 ? '' : (
+                    (m?.conversation as string) ||
+                    ((m?.extendedTextMessage as Record<string, unknown>)?.text as string) ||
+                    ((m?.imageMessage as Record<string, unknown>)?.caption as string) ||
+                    ((m?.videoMessage as Record<string, unknown>)?.caption as string) ||
+                    ((m?.documentWithCaptionMessage as any)?.message?.documentMessage?.caption as string) ||
+                    ((m?.documentMessage as Record<string, unknown>)?.fileName as string) ||
+                    ((m?.buttonsResponseMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                    ((m?.listResponseMessage as Record<string, unknown>)?.title as string) ||
+                    ((m?.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
+                    ((m?.templateMessage as any)?.interactiveMessageTemplate?.body?.text as string) ||
+                    ((m?.templateMessage as any)?.hydratedTemplate?.bodyText as string) ||
+                    ((m?.templateMessage as any)?.hydratedTemplate?.hydratedContentText as string) ||
+                    ((m?.templateMessage as any)?.hydratedFourRowTemplate?.hydratedContentText as string) ||
+                    ((m?.interactiveMessage as any)?.body?.text as string) ||
+                    ((m?.interactiveMessage as any)?.header?.title as string) ||
+                    ((m?.buttonsMessage as any)?.contentText as string) ||
+                    ((m?.listMessage as any)?.description as string) ||
+                    ((m?.listMessage as any)?.title as string) ||
+                    ((m?.viewOnceMessage as any)?.message?.imageMessage?.caption as string) ||
+                    ((m?.viewOnceMessage as any)?.message?.videoMessage?.caption as string) ||
+                    ((m?.viewOnceMessageV2 as any)?.message?.imageMessage?.caption as string) ||
+                    ((m?.viewOnceMessageV2 as any)?.message?.videoMessage?.caption as string) ||
+                    ''
+                )
+
+                let type = 'text'
+                let hasMedia = false
+
+                const imgNode = m?.imageMessage || (m?.viewOnceMessage as any)?.message?.imageMessage || (m?.viewOnceMessageV2 as any)?.message?.imageMessage || (m?.templateMessage as any)?.interactiveMessageTemplate?.header?.imageMessage || (m?.templateMessage as any)?.hydratedTemplate?.imageMessage
+                const vidNode = m?.videoMessage || (m?.viewOnceMessage as any)?.message?.videoMessage || (m?.viewOnceMessageV2 as any)?.message?.videoMessage || (m?.templateMessage as any)?.interactiveMessageTemplate?.header?.videoMessage || (m?.templateMessage as any)?.hydratedTemplate?.videoMessage
+                const docNode = m?.documentMessage || (m?.documentWithCaptionMessage as any)?.message?.documentMessage || (m?.templateMessage as any)?.interactiveMessageTemplate?.header?.documentMessage || (m?.templateMessage as any)?.hydratedTemplate?.documentMessage
+
+                if (imgNode) {
+                    type = 'image'
+                    hasMedia = true
+                    if (!content) content = '📷 Imagem'
+                } else if (vidNode) {
+                    type = 'video'
+                    hasMedia = true
+                    if (!content) content = '🎬 Vídeo'
+                } else if (m?.audioMessage) {
+                    type = 'audio'
+                    hasMedia = true
+                    if (!content) content = '🎵 Áudio'
+                } else if (docNode) {
+                    type = 'document'
+                    hasMedia = true
+                    if (!content) content = '📄 Documento'
+                } else if (m?.stickerMessage) {
+                    type = 'sticker'
+                    hasMedia = true
+                    if (!content) content = '🏷️ Figurinha'
+                }
+
+                // If no text, and no standard media is identified, skip or save generic
+                if (!content && !hasMedia) {
+                    content = 'Mensagem de sistema ou mídia não suportada'
+                }
+
+                // We need an Account ID and Contact ID to save in Prisma CRM structure
+                let account = await prisma.account.findFirst()
+                if (!account) {
+                    account = await prisma.account.create({
+                        data: { name: 'Conta Principal', plan: 'pro' }
+                    })
+                }
+
+                // Upsert Contact
+                let contact = await prisma.contact.findFirst({
+                    where: { phone: remoteJid, accountId: account.id }
+                })
+                if (!contact) {
+                    let avatarUrl = null;
+                    try {
+                        const picData = await getProfilePicture(remoteJid);
+                        if (picData?.profilePictureUrl) {
+                            avatarUrl = picData.profilePictureUrl;
+                        }
+                    } catch (e) {
+                        console.log(`[Processor] Could not fetch avatar for ${remoteJid}`);
+                    }
+
+                    contact = await prisma.contact.create({
+                        data: {
+                            accountId: account.id,
+                            name: pushName || remoteJid,
+                            phone: remoteJid,
+                            avatarUrl: avatarUrl
+                        }
+                    })
+                } else if (!contact.avatarUrl) {
+                    // Try to backfill missing avatars on existing contacts when they message us
+                    try {
+                        const picData = await getProfilePicture(remoteJid);
+                        if (picData?.profilePictureUrl) {
+                            contact = await prisma.contact.update({
+                                where: { id: contact.id },
+                                data: { avatarUrl: picData.profilePictureUrl }
+                            });
+                        }
+                    } catch (e) {
+                        // Ignore
+                    }
+                }
+
+                // Upsert Conversation
+                let conversation = await prisma.conversation.findUnique({
+                    where: { whatsappJid: remoteJid }
+                })
+
+                if (!conversation) {
+                    conversation = await prisma.conversation.create({
+                        data: {
+                            whatsappJid: remoteJid,
+                            accountId: account.id,
+                            contactId: contact.id,
+                            channel: 'WHATSAPP',
+                            status: 'OPEN',
+                            unreadCount: fromMe ? 0 : 1
+                        }
+                    })
+                } else if (!fromMe) {
+                    // Increment unread count if received
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { unreadCount: { increment: 1 } }
+                    })
+                }
+
+                // Upsert Message
+                const savedMessage = await prisma.message.upsert({
+                    where: { whatsappId: messageId },
+                    create: {
+                        whatsappId: messageId,
+                        whatsappJid: remoteJid,
+                        content,
+                        type,
+                        fromMe,
+                        sender: fromMe ? 'USER' : 'CONTACT',
+                        senderName: pushName,
+                        conversationId: conversation.id,
+                        isRead: fromMe, // Sent messages are read by default
+                    },
+                    update: {} // No update needed for now if it already exists
+                })
+
+                // Broadcast new message via Supabase Realtime
+                await supabaseAdmin.channel('whatsapp_updates').send({
+                    type: 'broadcast',
+                    event: 'new_message',
+                    payload: {
+                        message: {
+                            id: savedMessage.whatsappId,
+                            content: savedMessage.content,
+                            type: savedMessage.type,
+                            fromMe: savedMessage.fromMe,
+                            remoteJid: savedMessage.whatsappJid,
+                            timestamp: savedMessage.createdAt.toISOString(),
+                            senderName: savedMessage.senderName,
+                            hasMedia: ['image', 'video', 'audio', 'document', 'sticker'].includes(savedMessage.type)
+                        },
+                        chat: {
+                            id: conversation.whatsappJid,
+                            unreadCount: conversation.unreadCount
+                        }
+                    }
+                })
+            }
+
+            // Sync Read Receipts from Mobile to CRM
+            if (event === 'messages.update') {
+                const status = msg.status || ''
+                const msgFromMe = msg.fromMe === true;
+                const remoteJid = msg.key?.remoteJid || msg.remoteJid || '';
+                const isGroup = remoteJid.includes('@g.us') || remoteJid.includes('@lid');
+
+                // WhatsApp group read receipts don't fire "READ" easily.
+                // If the user reads a group on their phone, it might fire SERVER_ACK/DELIVERY_ACK with fromMe: true
+                const isReadExplicit = status === 'READ' || status === 3 || status === 4;
+                const isGroupReadImplicit = isGroup && msgFromMe && (status === 'SERVER_ACK' || status === 'DELIVERY_ACK');
+
+                if (isReadExplicit || isGroupReadImplicit) {
+                    const updateMsgId = msg.key?.id || msg.keyId || msg.messageId || '';
+                    let realJidToClear = '';
+
+                    if (updateMsgId) {
+                        const existingMsg = await prisma.message.findUnique({
+                            where: { whatsappId: updateMsgId },
+                            select: { whatsappJid: true }
+                        });
+                        if (existingMsg && existingMsg.whatsappJid) realJidToClear = existingMsg.whatsappJid;
+                    }
+
+                    // Fallback to the remoteJid if message wasn't found but we know it's a group read
+                    if (!realJidToClear && isGroupReadImplicit && remoteJid) {
+                        realJidToClear = remoteJid;
+                        // Evolution sometimes sends :48@lid, trim it down to base JID if needed
+                        if (realJidToClear.includes(':')) {
+                            realJidToClear = realJidToClear.split(':')[0] + '@lid';
+                        }
+                    }
+
+                    if (realJidToClear) {
+                        // Update database
+                        await prisma.conversation.updateMany({
+                            where: { whatsappJid: realJidToClear },
+                            data: { unreadCount: 0 }
+                        })
+
+                        await prisma.message.updateMany({
+                            where: { whatsappJid: realJidToClear, isRead: false },
+                            data: { isRead: true }
+                        })
+
+                        // Broadcast read event to clients
+                        await supabaseAdmin.channel('whatsapp_updates').send({
+                            type: 'broadcast',
+                            event: 'read_receipt',
+                            payload: {
+                                chat: { id: realJidToClear, unreadCount: 0 }
+                            }
+                        })
+                    }
+                }
+            }
+
+            // Sync Unread Count changes (e.g., when the user reads a chat on their phone)
+            if (event === 'chats.update' || event === 'chats.upsert') {
+                const unreadCount = msg.unreadCount;
+                const chatJid = msg.id || msg.remoteJid || msg.key?.remoteJid;
+
+                if (chatJid) {
+                    let finalUnreadCount = unreadCount;
+
+                    // If Evolution stripped the unreadCount from chats.update, fetch it live
+                    if (finalUnreadCount === undefined) {
+                        try {
+                            const allChats = await getChats();
+                            if (Array.isArray(allChats)) {
+                                const targetChat = allChats.find(c => c.id === chatJid || c.remoteJid === chatJid);
+                                if (targetChat) {
+                                    finalUnreadCount = targetChat.unreadCount;
+                                }
+                            }
+                        } catch (e) {
+                            console.log('[Processor] Failed to fetch live chat state for unread count', e);
+                        }
+                    }
+
+                    if (finalUnreadCount !== undefined) {
+                        const existingConv = await prisma.conversation.findUnique({
+                            where: { whatsappJid: chatJid },
+                            select: { readOverrideUntil: true }
+                        });
+
+                        const isOverride = existingConv?.readOverrideUntil && new Date(existingConv.readOverrideUntil) > new Date();
+
+                        if (!isOverride) {
+                            await prisma.conversation.updateMany({
+                                where: { whatsappJid: chatJid },
+                                data: { unreadCount: Number(finalUnreadCount) }
+                            });
+                        }
+
+                        // If read completely, mark all associated unread messages as read
+                        if (Number(finalUnreadCount) === 0) {
+                            await prisma.message.updateMany({
+                                where: { whatsappJid: chatJid, isRead: false },
+                                data: { isRead: true }
+                            });
+                        }
+
+                        // Broadcast to UI to clear read bubbles
+                        await supabaseAdmin.channel('whatsapp_updates').send({
+                            type: 'broadcast',
+                            event: 'read_receipt',
+                            payload: {
+                                chat: { id: chatJid, unreadCount: Number(finalUnreadCount) }
+                            }
+                        });
+                    }
+
+                    // Let's also backfill group avatars just in case the initial creation missed it
+                    if (chatJid.includes('@g.us') || chatJid.includes('@lid')) {
+                        const existingContact = await prisma.contact.findFirst({
+                            where: { phone: chatJid }
+                        });
+                        if (existingContact && !existingContact.avatarUrl) {
+                            try {
+                                const picData = await getProfilePicture(chatJid);
+                                if (picData?.profilePictureUrl) {
+                                    await prisma.contact.update({
+                                        where: { id: existingContact.id },
+                                        data: { avatarUrl: picData.profilePictureUrl }
+                                    });
+                                }
+                            } catch (e) {
+                                // Ignore
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mark event as processed cleanly
+        if (rawId) {
+            await prisma.whatsappEventRaw.update({
+                where: { id: rawId },
+                data: { processed: true, processedAt: new Date() }
+            })
+            console.log(`[Processor] Fully processed raw event: ${rawId}`)
+        }
+
+        return NextResponse.json({ status: 'ok' })
+    } catch (error: any) {
+        console.error('[Processor] Fatal Error:', error)
+
+        // If we extracted the ID and it failed midway, try to log the error back to DB
+        if (rawId) {
+            try {
+                await prisma.whatsappEventRaw.update({
+                    where: { id: rawId },
+                    data: { error: String(error?.message || error) }
+                })
+            } catch (e) {
+                // Ignore fallback error
+            }
+        }
+
+        // We throw 500 so Supabase webhook triggers a retry mechanism if configured
+        return NextResponse.json({ status: 'error', message: error?.message || 'Unknown' }, { status: 500 })
+    }
+}

@@ -33,28 +33,23 @@ export async function proxy(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // Routes that should always pass through (no redirects)
-    const skipRoutes = ['/api', '/auth']
-    const isSkipRoute = skipRoutes.some(route =>
-        request.nextUrl.pathname.startsWith(route)
-    )
-    if (isSkipRoute) return supabaseResponse
+    const url = request.nextUrl.clone()
+    const isAuthRoute = url.pathname.startsWith('/login') || url.pathname.startsWith('/register') || url.pathname === '/'
 
-    // Auth pages — redirect logged-in users to dashboard
-    const authPages = ['/login', '/register']
-    const isAuthPage = authPages.some(route =>
-        request.nextUrl.pathname.startsWith(route)
-    )
+    // Allow public API and static files
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next') || url.pathname.includes('.')) {
+        return supabaseResponse
+    }
 
-    if (!user && !isAuthPage) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/login'
+    if (user && isAuthRoute) {
+        // Logged-in users shouldn't see the login page or landing page, send them to dashboard
+        url.pathname = '/dashboard'
         return NextResponse.redirect(url)
     }
 
-    if (user && isAuthPage) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/dashboard'
+    if (!user && !isAuthRoute) {
+        // Unauthenticated users trying to access private routes
+        url.pathname = '/login'
         return NextResponse.redirect(url)
     }
 
