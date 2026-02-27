@@ -4,6 +4,7 @@ import { setLidPhone } from '@/lib/lid-map'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
 import { processAgentMessage } from '@/lib/ai/orchestrator'
+import { routeToAgent } from '@/lib/ai/router'
 
 /**
  * Background Processor for Evolution API events stored in WhatsappEventRaw.
@@ -174,7 +175,8 @@ export async function POST(request: NextRequest) {
                         accountId: true,
                         contactId: true,
                         unreadCount: true,
-                        aiEnabled: true
+                        aiEnabled: true,
+                        agentId: true
                     }
                 })
 
@@ -195,7 +197,8 @@ export async function POST(request: NextRequest) {
                             accountId: true,
                             contactId: true,
                             unreadCount: true,
-                            aiEnabled: true
+                            aiEnabled: true,
+                            agentId: true
                         }
                     })
                 } else if (!fromMe) {
@@ -245,32 +248,71 @@ export async function POST(request: NextRequest) {
                     }
                 })
 
-                // ===== AI AUTO-RESPONSE =====
+                // ===== AI AUTO-RESPONSE (with intelligent routing) =====
                 // Only trigger for incoming, non-group, text-based messages
                 const isGroup = remoteJid.includes('@g.us')
-                const isTextBased = ['text'].includes(type) && content.length > 0
+                const isTextBased = type === 'text' && content.length > 0
 
                 if (!fromMe && !isGroup && isTextBased && conversation.aiEnabled) {
-                    // Fetch active agent for this account (fire-and-forget, non-blocking)
-                    prisma.agent.findFirst({
-                        where: { accountId: account.id, isActive: true }
-                    }).then(async (activeAgent) => {
-                        if (!activeAgent) return // No active agent configured
-
+                    // Fire-and-forget: non-blocking AI dispatch
+                    ; (async () => {
                         try {
-                            console.log(`[Processor] AI Agent "${activeAgent.name}" responding to ${remoteJid}`)
+                            let agentId = conversation.agentId ?? null
 
-                            // Call orchestrator: builds prompt, calls GPT-4o, saves AI message to DB
+                            // ── ROUTING PHASE ──────────────────────────────────────────
+                            // If no agent is assigned yet, use the AI Router to pick one
+                            if (!agentId) {
+                                console.log(`[Processor] New conversation — routing lead to best agent...`)
+                                agentId = await routeToAgent(account.id, content)
+
+                                if (agentId) {
+                                    // Persist the agent assignment so future messages skip routing
+                                    await prisma.conversation.update({
+                                        where: { id: conversation.id },
+                                        data: { agentId, aiEnabled: true }
+                                    })
+
+                                    // Notify the CRM UI that the agent was auto-assigned
+                                    await supabaseAdmin.channel('whatsapp_updates').send({
+                                        type: 'broadcast',
+                                        event: 'agent_assigned',
+                                        payload: { conversationId: conversation.id, agentId, jid: remoteJid }
+                                    })
+
+                                    console.log(`[Processor] AI Router assigned agent ${agentId} to conversation ${conversation.id}`)
+                                }
+                            }
+
+                            if (!agentId) {
+                                console.log(`[Processor] No active agent found — skipping AI response.`)
+                                return
+                            }
+
+                            // ── RESPONSE PHASE ─────────────────────────────────────────
+                            // Fetch the agent record to get the display name for the broadcast
+                            const activeAgent = await prisma.agent.findUnique({
+                                where: { id: agentId },
+                                select: { id: true, name: true, isActive: true }
+                            })
+
+                            if (!activeAgent?.isActive) {
+                                console.log(`[Processor] Agent ${agentId} is inactive — skipping.`)
+                                return
+                            }
+
+                            console.log(`[Processor] Agent "${activeAgent.name}" responding to ${remoteJid}`)
+
+                            // Call orchestrator: build full system prompt, call GPT-4o, save AI message to DB
                             const { content: aiResponse } = await processAgentMessage(
                                 activeAgent.id,
                                 conversation.id,
                                 content
                             )
 
-                            // Send response via Evolution API
+                            // Send response via Evolution API (WhatsApp)
                             await sendTextMessage(remoteJid, aiResponse)
 
-                            // Broadcast AI response to CRM chat UI in real-time
+                            // Broadcast AI message to CRM chat UI in real-time
                             await supabaseAdmin.channel('whatsapp_updates').send({
                                 type: 'broadcast',
                                 event: 'new_message',
@@ -280,7 +322,7 @@ export async function POST(request: NextRequest) {
                                         content: aiResponse,
                                         type: 'text',
                                         fromMe: true,
-                                        remoteJid: remoteJid,
+                                        remoteJid,
                                         timestamp: new Date().toISOString(),
                                         senderName: activeAgent.name,
                                         hasMedia: false
@@ -289,13 +331,12 @@ export async function POST(request: NextRequest) {
                                 }
                             })
 
-                            console.log(`[Processor] AI response sent to ${remoteJid}`)
+                            console.log(`[Processor] AI response sent successfully to ${remoteJid}`)
+
                         } catch (err) {
-                            console.error(`[Processor] AI agent failed to respond:`, err)
+                            console.error(`[Processor] AI pipeline failed:`, err)
                         }
-                    }).catch(err => {
-                        console.error('[Processor] Failed to fetch active agent:', err)
-                    })
+                    })()
                 }
                 // ===== END AI AUTO-RESPONSE =====
             }
