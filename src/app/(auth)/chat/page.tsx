@@ -188,12 +188,27 @@ export default function ChatPage() {
     const [loadingChats, setLoadingChats] = useState(true)
     const [loadingMessages, setLoadingMessages] = useState(false)
     const [sendingMessage, setSendingMessage] = useState(false)
-    const [searchQuery, setSearchQuery] = useState("")
+    const [searchQuery, setSearchQuery] = useState<string>("")
     const [filter, setFilter] = useState<"all" | "personal" | "groups">("all")
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
 
+    // Agent assignment state
+    const [agents, setAgents] = useState<{ id: string; name: string; isActive: boolean }[]>([])
+    const [conversationId, setConversationId] = useState<string | null>(null)
+    const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null)
+    const [aiEnabled, setAiEnabled] = useState(true)
+    const [assigningAgent, setAssigningAgent] = useState(false)
+
     const supabase = createClient()
+
+    // Fetch available AI agents once
+    useEffect(() => {
+        fetch('/api/agents')
+            .then(r => r.json())
+            .then(data => { if (Array.isArray(data)) setAgents(data.filter((a: any) => a.isActive)) })
+            .catch(() => { })
+    }, [])
 
     // Realtime Incoming Messages
     useEffect(() => {
@@ -309,6 +324,21 @@ export default function ChatPage() {
     useEffect(() => {
         if (selectedChat) loadMessages(selectedChat)
     }, [selectedChat, loadMessages])
+
+    // Load conversation metadata (agent assignment) when chat changes
+    useEffect(() => {
+        if (!selectedChat) { setConversationId(null); setAssignedAgentId(null); return }
+        fetch(`/api/whatsapp?action=conversation&jid=${encodeURIComponent(selectedChat.id)}`, { cache: 'no-store' })
+            .then(r => r.json())
+            .then((data: any) => {
+                if (data?.id) {
+                    setConversationId(data.id)
+                    setAssignedAgentId(data.agentId || null)
+                    setAiEnabled(data.aiEnabled ?? true)
+                }
+            })
+            .catch(() => { })
+    }, [selectedChat?.id])
 
     // Auto-scroll to bottom of messages only
     useEffect(() => {
@@ -667,12 +697,59 @@ export default function ChatPage() {
                         )}
                         <div className="apple-glass-panel rounded-2xl p-4">
                             <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Assistente Atribuído</p>
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-white/[0.04] flex items-center justify-center border border-white/10 shadow-inner">
-                                    <Bot className="w-4 h-4 text-white/30" />
+                            <select
+                                className="w-full bg-black/30 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500/50 transition-colors cursor-pointer disabled:opacity-50"
+                                value={assignedAgentId || ""}
+                                disabled={assigningAgent || !conversationId}
+                                onChange={async (e) => {
+                                    const newAgentId = e.target.value || null
+                                    if (!conversationId) return
+                                    setAssigningAgent(true)
+                                    setAssignedAgentId(newAgentId)
+                                    try {
+                                        await fetch(`/api/conversations/${conversationId}`, {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                agentId: newAgentId,
+                                                aiEnabled: !!newAgentId
+                                            })
+                                        })
+                                        setAiEnabled(!!newAgentId)
+                                    } catch (err) {
+                                        console.error('Failed to assign agent', err)
+                                    } finally {
+                                        setAssigningAgent(false)
+                                    }
+                                }}
+                            >
+                                <option value="">👤 Atendimento Humano</option>
+                                {agents.map(a => (
+                                    <option key={a.id} value={a.id}>🤖 {a.name}</option>
+                                ))}
+                            </select>
+
+                            {/* AI Enabled Toggle — only visible when an agent is assigned */}
+                            {assignedAgentId && (
+                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.06]">
+                                    <span className="text-xs font-medium text-white/50">Respostas automáticas</span>
+                                    <button
+                                        onClick={async () => {
+                                            if (!conversationId) return
+                                            const newVal = !aiEnabled
+                                            setAiEnabled(newVal)
+                                            await fetch(`/api/conversations/${conversationId}`, {
+                                                method: 'PATCH',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ aiEnabled: newVal })
+                                            }).catch(console.error)
+                                        }}
+                                        className={`relative w-10 h-5 rounded-full transition-colors duration-300 ${aiEnabled ? 'bg-emerald-500' : 'bg-white/10'}`}
+                                    >
+                                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-300 ${aiEnabled ? 'translate-x-5' : ''}`} />
+                                    </button>
                                 </div>
-                                <span className="text-sm font-medium text-white/40 italic">Atendimento Humano</span>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>

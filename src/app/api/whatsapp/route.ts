@@ -210,6 +210,16 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json(allChats)
             }
 
+            case 'conversation': {
+                const jid = searchParams.get('jid')
+                if (!jid) return NextResponse.json({ error: 'jid required' }, { status: 400 })
+                const conv = await prisma.conversation.findUnique({
+                    where: { whatsappJid: jid },
+                    select: { id: true, agentId: true, aiEnabled: true, assigneeId: true }
+                })
+                return NextResponse.json(conv || {})
+            }
+
             case 'messages': {
                 const remoteJid = searchParams.get('jid')
                 if (!remoteJid) {
