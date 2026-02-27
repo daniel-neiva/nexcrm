@@ -1,10 +1,9 @@
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
-const prisma = new PrismaClient()
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
+function getOpenAI() {
+    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+}
 
 export async function processAgentMessage(agentId: string, conversationId: string, userMessage: string) {
     try {
@@ -68,6 +67,7 @@ export async function processAgentMessage(agentId: string, conversationId: strin
         - Se o cliente pedir para falar com um humano, siga as REGRAS DE TRANSBORDO.`
 
         // 4. Call OpenAI
+        const openai = getOpenAI()
         const completion = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
