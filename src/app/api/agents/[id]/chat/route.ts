@@ -7,10 +7,10 @@ const prisma = new PrismaClient()
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id: agentId } = params
+        const { id: agentId } = await params
         const { message, conversationId, contactId } = await req.json()
 
         const supabase = await createClient()

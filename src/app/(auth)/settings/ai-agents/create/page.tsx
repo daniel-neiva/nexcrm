@@ -924,7 +924,7 @@ function Step9({
                             <p className="text-xs text-white/30 italic">Envie uma mensagem para testar a personalidade e o conhecimento da {formData.name || 'sua IA'}.</p>
                         </div>
                     )}
-                    {testChatMessages.map((msg, i) => (
+                    {testChatMessages.map((msg: { role: "user" | "assistant"; content: string }, i: number) => (
                         <div key={i} className={cn(
                             "flex flex-col max-w-[85%]",
                             msg.role === "user" ? "ml-auto items-end" : "items-start"

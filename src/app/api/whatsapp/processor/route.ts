@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getProfilePicture, getChats } from '@/lib/evolution'
+import { getProfilePicture, getChats, sendTextMessage } from '@/lib/evolution'
 import { setLidPhone } from '@/lib/lid-map'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
+import { processAgentMessage } from '@/lib/ai/orchestrator'
 
 /**
  * Background Processor for Evolution API events stored in WhatsappEventRaw.
@@ -166,7 +167,15 @@ export async function POST(request: NextRequest) {
 
                 // Upsert Conversation
                 let conversation = await prisma.conversation.findUnique({
-                    where: { whatsappJid: remoteJid }
+                    where: { whatsappJid: remoteJid },
+                    select: {
+                        id: true,
+                        whatsappJid: true,
+                        accountId: true,
+                        contactId: true,
+                        unreadCount: true,
+                        aiEnabled: true
+                    }
                 })
 
                 if (!conversation) {
@@ -177,7 +186,16 @@ export async function POST(request: NextRequest) {
                             contactId: contact.id,
                             channel: 'WHATSAPP',
                             status: 'OPEN',
-                            unreadCount: fromMe ? 0 : 1
+                            unreadCount: fromMe ? 0 : 1,
+                            aiEnabled: true
+                        },
+                        select: {
+                            id: true,
+                            whatsappJid: true,
+                            accountId: true,
+                            contactId: true,
+                            unreadCount: true,
+                            aiEnabled: true
                         }
                     })
                 } else if (!fromMe) {
@@ -226,6 +244,60 @@ export async function POST(request: NextRequest) {
                         }
                     }
                 })
+
+                // ===== AI AUTO-RESPONSE =====
+                // Only trigger for incoming, non-group, text-based messages
+                const isGroup = remoteJid.includes('@g.us')
+                const isTextBased = ['text'].includes(type) && content.length > 0
+
+                if (!fromMe && !isGroup && isTextBased && conversation.aiEnabled) {
+                    // Fetch active agent for this account (fire-and-forget, non-blocking)
+                    prisma.agent.findFirst({
+                        where: { accountId: account.id, isActive: true }
+                    }).then(async (activeAgent) => {
+                        if (!activeAgent) return // No active agent configured
+
+                        try {
+                            console.log(`[Processor] AI Agent "${activeAgent.name}" responding to ${remoteJid}`)
+
+                            // Call orchestrator: builds prompt, calls GPT-4o, saves AI message to DB
+                            const { content: aiResponse } = await processAgentMessage(
+                                activeAgent.id,
+                                conversation.id,
+                                content
+                            )
+
+                            // Send response via Evolution API
+                            await sendTextMessage(remoteJid, aiResponse)
+
+                            // Broadcast AI response to CRM chat UI in real-time
+                            await supabaseAdmin.channel('whatsapp_updates').send({
+                                type: 'broadcast',
+                                event: 'new_message',
+                                payload: {
+                                    message: {
+                                        id: `ai_${Date.now()}`,
+                                        content: aiResponse,
+                                        type: 'text',
+                                        fromMe: true,
+                                        remoteJid: remoteJid,
+                                        timestamp: new Date().toISOString(),
+                                        senderName: activeAgent.name,
+                                        hasMedia: false
+                                    },
+                                    chat: { id: remoteJid, unreadCount: 0 }
+                                }
+                            })
+
+                            console.log(`[Processor] AI response sent to ${remoteJid}`)
+                        } catch (err) {
+                            console.error(`[Processor] AI agent failed to respond:`, err)
+                        }
+                    }).catch(err => {
+                        console.error('[Processor] Failed to fetch active agent:', err)
+                    })
+                }
+                // ===== END AI AUTO-RESPONSE =====
             }
 
             // Sync Read Receipts from Mobile to CRM
