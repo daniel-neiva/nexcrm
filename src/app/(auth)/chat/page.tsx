@@ -211,20 +211,24 @@ export default function ChatPage() {
     }, [])
 
     // Realtime Incoming Messages
+    // Use a ref so the subscription callback always sees the latest selectedChat without re-subscribing
+    const selectedChatRef = useRef<Chat | null>(null)
+    useEffect(() => { selectedChatRef.current = selectedChat }, [selectedChat])
+
     useEffect(() => {
         const channel = supabase.channel('whatsapp_updates')
             .on('broadcast', { event: 'new_message' }, ({ payload }) => {
                 const incomingMsg = payload.message as Message
                 const incomingChat = payload.chat as { id: string, unreadCount: number }
+                const currentSelectedChat = selectedChatRef.current
 
-                // Check if it belongs to selected chat
-                if (selectedChat?.id === incomingMsg.remoteJid) {
+                // If the message belongs to the currently open chat, append it
+                if (currentSelectedChat?.id === incomingMsg.remoteJid) {
                     setMessages(prev => {
-                        // Avoid duplicates
                         if (prev.some(m => m.id === incomingMsg.id)) return prev
                         return [...prev, incomingMsg]
                     })
-                    // Auto-mark read since user is actively looking at this chat
+                    // Auto-mark read
                     if (!incomingMsg.fromMe) {
                         fetch("/api/whatsapp/read", {
                             method: "POST",
@@ -233,22 +237,28 @@ export default function ChatPage() {
                     }
                 }
 
-                // Update chats list (bump to top, update preview text, unread count)
+                // Update chat list: bump to top, update preview, unread count
                 setChats(prev => {
                     const chatIndex = prev.findIndex(c => c.id === incomingMsg.remoteJid)
+
                     if (chatIndex === -1) {
-                        // We might want to reload chats if a brand new conversation arrives
-                        return prev
+                        // Brand new conversation — reload the full chat list from API
+                        fetch("/api/whatsapp?action=chats", { cache: "no-store" })
+                            .then(r => r.json())
+                            .then(data => { if (Array.isArray(data)) setChats(data) })
+                            .catch(console.error)
+                        return prev // return unchanged for now, the fetch above will overwrite
                     }
+
                     const updatedChat = {
                         ...prev[chatIndex],
                         lastMessage: incomingMsg.content,
                         lastActivity: incomingMsg.timestamp,
-                        unread: (selectedChat?.id === incomingMsg.remoteJid) ? 0 : incomingChat.unreadCount
+                        unread: (selectedChatRef.current?.id === incomingMsg.remoteJid) ? 0 : incomingChat.unreadCount
                     }
                     const newChats = [...prev]
-                    newChats.splice(chatIndex, 1) // remove
-                    newChats.unshift(updatedChat) // put at top
+                    newChats.splice(chatIndex, 1)
+                    newChats.unshift(updatedChat)
                     return newChats
                 })
             })
@@ -265,7 +275,7 @@ export default function ChatPage() {
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [selectedChat])
+    }, []) // Only subscribe once — selectedChat accessed via ref
 
     // Load chats
     useEffect(() => {
