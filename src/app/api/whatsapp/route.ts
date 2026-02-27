@@ -368,6 +368,7 @@ export async function GET(request: NextRequest) {
                             senderName,
                             senderProfilePicUrl: participant ? contactPicMap.get(participant) : null,
                             hasMedia: ['image', 'audio', 'video', 'document'].includes(type),
+                            isRead: msg.status === 'READ' || msg.status === 4 || key.fromMe === false, // Incoming are read by us, outgoing check status
                         }
                     })
                     .sort((a, b) => {

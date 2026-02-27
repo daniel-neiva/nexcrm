@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Search, Send, Paperclip, Smile, Phone, Video, Bot, MoreVertical, Loader2, MessageSquare, Users, Download, Play, FileText, X } from "lucide-react"
+import { Search, Send, Paperclip, Smile, Phone, Video, Bot, MoreVertical, Loader2, MessageSquare, Users, Download, Play, FileText, X, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -26,6 +26,7 @@ interface Message {
     messageType?: string
     mimetype?: string
     fromMe: boolean
+    isRead?: boolean
     remoteJid: string
     timestamp: string | null
     senderName: string | null
@@ -270,6 +271,20 @@ export default function ChatPage() {
                     ))
                 }
             })
+            .on('broadcast', { event: 'message_status_update' }, ({ payload }) => {
+                const { remoteJid, isRead } = payload
+                if (selectedChatRef.current?.id === remoteJid) {
+                    setMessages(prev => prev.map(m =>
+                        m.fromMe ? { ...m, isRead: isRead } : m
+                    ))
+                }
+            })
+            .on('broadcast', { event: 'messages_cleared' }, ({ payload }) => {
+                const { remoteJid } = payload
+                if (selectedChatRef.current?.id === remoteJid) {
+                    setMessages([])
+                }
+            })
             .subscribe()
 
         return () => {
@@ -356,6 +371,17 @@ export default function ChatPage() {
         if (el) el.scrollTop = el.scrollHeight
     }, [messages])
 
+    // Reset conversation memory
+    async function handleResetMemory(conversationId: string) {
+        if (!confirm('Limpar a memória do bot nessa conversa? O histórico será apagado e o bot começará do zero.')) return
+        try {
+            await fetch(`/api/conversations/${conversationId}/reset`, { method: 'POST' })
+            setMessages([])
+        } catch (err) {
+            console.error('Erro ao limpar memória:', err)
+        }
+    }
+
     // Send message
     async function handleSendMessage(e: React.FormEvent) {
         e.preventDefault()
@@ -363,6 +389,13 @@ export default function ChatPage() {
 
         const text = messageInput.trim()
         setMessageInput("")
+
+        // /reset command — clears bot memory without sending a WhatsApp message
+        if (text.toLowerCase() === '/reset' && conversationId) {
+            await handleResetMemory(conversationId)
+            return
+        }
+
         setSendingMessage(true)
 
         // Optimistic update
@@ -533,6 +566,15 @@ export default function ChatPage() {
                             <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
                                 <Bot className="w-[18px] h-[18px]" />
                             </button>
+                            {conversationId && (
+                                <button
+                                    title="Limpar memória do bot"
+                                    onClick={() => handleResetMemory(conversationId)}
+                                    className="p-2.5 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                >
+                                    <Trash2 className="w-[18px] h-[18px]" />
+                                </button>
+                            )}
                             <button className="p-2.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all">
                                 <MoreVertical className="w-[18px] h-[18px]" />
                             </button>
@@ -604,6 +646,14 @@ export default function ChatPage() {
                                                     )}
                                                 >
                                                     <span className="text-[9px] font-bold tracking-widest uppercase">{formatMessageTime(msg.timestamp)}</span>
+                                                    {msg.fromMe && (
+                                                        <span className={cn(
+                                                            "text-[11px] font-bold leading-none",
+                                                            msg.isRead ? "text-blue-400" : "text-white/40"
+                                                        )}>
+                                                            {msg.isRead ? "✓✓" : "✓"}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

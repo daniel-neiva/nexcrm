@@ -233,6 +233,36 @@ export async function POST(request: NextRequest) {
                     })
                 }
 
+                // Check for /reset command (can be sent from either side to clear memory)
+                if (content.trim().toLowerCase() === '/reset') {
+                    console.log(`[Processor] Reset command detected for conversation ${conversation.id}`)
+
+                    // Call the reset logic directly via Prisma (since we're already on the server)
+                    await prisma.message.deleteMany({
+                        where: { conversationId: conversation.id }
+                    })
+
+                    // Reset unread count
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { unreadCount: 0 }
+                    })
+
+                    // Notify CRM UI to clear messages
+                    await supabaseAdmin.channel('whatsapp_updates').send({
+                        type: 'broadcast',
+                        event: 'messages_cleared',
+                        payload: { conversationId: conversation.id, remoteJid }
+                    })
+
+                    // Confirmation message
+                    if (!fromMe) {
+                        await sendTextMessage(remoteJid, "🗑️ *Memória limpa!* Começando do zero.")
+                    }
+
+                    return NextResponse.json({ status: 'reset' })
+                }
+
                 // Broadcast new message via Supabase Realtime
                 await supabaseAdmin.channel('whatsapp_updates').send({
                     type: 'broadcast',
@@ -401,6 +431,17 @@ export async function POST(request: NextRequest) {
                         await prisma.message.updateMany({
                             where: { whatsappJid: realJidToClear, isRead: false },
                             data: { isRead: true }
+                        })
+
+                        // Broadcast read status to CRM UI so ticks turn blue in real-time
+                        await supabaseAdmin.channel('whatsapp_updates').send({
+                            type: 'broadcast',
+                            event: 'message_status_update',
+                            payload: {
+                                remoteJid: realJidToClear,
+                                messageId: updateMsgId,
+                                isRead: true
+                            }
                         })
 
                         // Broadcast read event to clients
