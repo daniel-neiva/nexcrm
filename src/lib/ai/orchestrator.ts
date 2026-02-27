@@ -66,10 +66,10 @@ export async function processAgentMessage(agentId: string, conversationId: strin
         - Se for um fluxo de AGENDAMENTO, tente direcionar para um horário.
         - Se o cliente pedir para falar com um humano, siga as REGRAS DE TRANSBORDO.`
 
-        // 4. Call OpenAI
+        // 4. Call OpenAI (gpt-4o-mini: ~5x faster, same quality for conversational responses)
         const openai = getOpenAI()
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: systemPrompt },
                 ...formattedHistory,

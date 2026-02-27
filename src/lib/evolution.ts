@@ -45,6 +45,19 @@ export async function sendTextMessage(number: string, text: string) {
     })
 }
 
+export async function markAsRead(remoteJid: string, messageIds: string[]) {
+    return evolutionFetch(`/chat/markMessageAsRead/${EVOLUTION_INSTANCE}`, {
+        method: 'POST',
+        body: JSON.stringify({
+            readMessages: messageIds.map(id => ({
+                remoteJid,
+                fromMe: false,
+                id,
+            }))
+        }),
+    })
+}
+
 export async function sendMediaMessage(
     number: string,
     mediaUrl: string,

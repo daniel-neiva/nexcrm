@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getProfilePicture, getChats, sendTextMessage } from '@/lib/evolution'
+import { getProfilePicture, getChats, sendTextMessage, markAsRead } from '@/lib/evolution'
 import { setLidPhone } from '@/lib/lid-map'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
@@ -226,6 +226,13 @@ export async function POST(request: NextRequest) {
                     update: {} // No update needed for now if it already exists
                 })
 
+                // Mark incoming message as read in WhatsApp (shows blue ✓✓ to the lead)
+                if (!fromMe && messageId) {
+                    markAsRead(remoteJid, [messageId]).catch(() => {
+                        // Non-critical: don't fail the pipeline if mark-as-read fails
+                    })
+                }
+
                 // Broadcast new message via Supabase Realtime
                 await supabaseAdmin.channel('whatsapp_updates').send({
                     type: 'broadcast',
@@ -239,7 +246,8 @@ export async function POST(request: NextRequest) {
                             remoteJid: savedMessage.whatsappJid,
                             timestamp: savedMessage.createdAt.toISOString(),
                             senderName: savedMessage.senderName,
-                            hasMedia: ['image', 'video', 'audio', 'document', 'sticker'].includes(savedMessage.type)
+                            hasMedia: ['image', 'video', 'audio', 'document', 'sticker'].includes(savedMessage.type),
+                            isRead: savedMessage.isRead,
                         },
                         chat: {
                             id: conversation.whatsappJid,
