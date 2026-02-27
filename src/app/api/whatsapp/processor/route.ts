@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getProfilePicture, getChats, sendTextMessage, markAsRead } from '@/lib/evolution'
 import { setLidPhone } from '@/lib/lid-map'
 import { supabaseAdmin } from '@/lib/supabase/admin'
@@ -262,21 +262,30 @@ export async function POST(request: NextRequest) {
                 const isTextBased = type === 'text' && content.length > 0
 
                 if (!fromMe && !isGroup && isTextBased && conversation.aiEnabled) {
-                    // Fire-and-forget: non-blocking AI dispatch
-                    ; (async () => {
+                    // Capture snapshot of variables needed inside after()
+                    const _conversationId = conversation.id
+                    const _agentId = conversation.agentId ?? null
+                    const _accountId = account.id
+                    const _content = content
+                    const _remoteJid = remoteJid
+
+                    // after() tells Vercel to keep this serverless function alive
+                    // AFTER the HTTP response is sent, so the GPT call can complete.
+                    // Without this, Vercel kills the process before the AI responds.
+                    after(async () => {
                         try {
-                            let agentId = conversation.agentId ?? null
+                            let agentId = _agentId
 
                             // ── ROUTING PHASE ──────────────────────────────────────────
                             // If no agent is assigned yet, use the AI Router to pick one
                             if (!agentId) {
                                 console.log(`[Processor] New conversation — routing lead to best agent...`)
-                                agentId = await routeToAgent(account.id, content)
+                                agentId = await routeToAgent(_accountId, _content)
 
                                 if (agentId) {
                                     // Persist the agent assignment so future messages skip routing
                                     await prisma.conversation.update({
-                                        where: { id: conversation.id },
+                                        where: { id: _conversationId },
                                         data: { agentId, aiEnabled: true }
                                     })
 
@@ -284,10 +293,10 @@ export async function POST(request: NextRequest) {
                                     await supabaseAdmin.channel('whatsapp_updates').send({
                                         type: 'broadcast',
                                         event: 'agent_assigned',
-                                        payload: { conversationId: conversation.id, agentId, jid: remoteJid }
+                                        payload: { conversationId: _conversationId, agentId, jid: _remoteJid }
                                     })
 
-                                    console.log(`[Processor] AI Router assigned agent ${agentId} to conversation ${conversation.id}`)
+                                    console.log(`[Processor] AI Router assigned agent ${agentId} to conversation ${_conversationId}`)
                                 }
                             }
 
@@ -297,7 +306,6 @@ export async function POST(request: NextRequest) {
                             }
 
                             // ── RESPONSE PHASE ─────────────────────────────────────────
-                            // Fetch the agent record to get the display name for the broadcast
                             const activeAgent = await prisma.agent.findUnique({
                                 where: { id: agentId },
                                 select: { id: true, name: true, isActive: true }
@@ -308,17 +316,17 @@ export async function POST(request: NextRequest) {
                                 return
                             }
 
-                            console.log(`[Processor] Agent "${activeAgent.name}" responding to ${remoteJid}`)
+                            console.log(`[Processor] Agent "${activeAgent.name}" responding to ${_remoteJid}`)
 
-                            // Call orchestrator: build full system prompt, call GPT-4o, save AI message to DB
+                            // Call orchestrator: build full system prompt, call gpt-4o-mini, save AI message to DB
                             const { content: aiResponse } = await processAgentMessage(
                                 activeAgent.id,
-                                conversation.id,
-                                content
+                                _conversationId,
+                                _content
                             )
 
                             // Send response via Evolution API (WhatsApp)
-                            await sendTextMessage(remoteJid, aiResponse)
+                            await sendTextMessage(_remoteJid, aiResponse)
 
                             // Broadcast AI message to CRM chat UI in real-time
                             await supabaseAdmin.channel('whatsapp_updates').send({
@@ -330,21 +338,22 @@ export async function POST(request: NextRequest) {
                                         content: aiResponse,
                                         type: 'text',
                                         fromMe: true,
-                                        remoteJid,
+                                        remoteJid: _remoteJid,
                                         timestamp: new Date().toISOString(),
                                         senderName: activeAgent.name,
-                                        hasMedia: false
+                                        hasMedia: false,
+                                        isRead: true,
                                     },
-                                    chat: { id: remoteJid, unreadCount: 0 }
+                                    chat: { id: _remoteJid, unreadCount: 0 }
                                 }
                             })
 
-                            console.log(`[Processor] AI response sent successfully to ${remoteJid}`)
+                            console.log(`[Processor] AI response sent successfully to ${_remoteJid}`)
 
                         } catch (err) {
                             console.error(`[Processor] AI pipeline failed:`, err)
                         }
-                    })()
+                    })
                 }
                 // ===== END AI AUTO-RESPONSE =====
             }
