@@ -532,14 +532,18 @@ export default function ChatPage() {
             setNewChatPhone('')
             setNewChatMessage('')
 
-            // Refresh chat list after a short delay to let the message arrive
-            setTimeout(async () => {
+            // Retry refresh multiple times until the new chat appears
+            const refreshChatList = async () => {
                 try {
                     const res = await fetch('/api/whatsapp?action=chats', { cache: 'no-store' })
                     const data = await res.json()
                     if (Array.isArray(data)) setChats(data)
                 } catch { }
-            }, 2000)
+            }
+            // Immediate + staggered retries to catch when Evolution syncs
+            setTimeout(refreshChatList, 500)
+            setTimeout(refreshChatList, 2000)
+            setTimeout(refreshChatList, 5000)
         } catch (err) {
             console.error('Erro ao iniciar conversa:', err)
             alert('Erro ao enviar mensagem. Verifique o número.')
