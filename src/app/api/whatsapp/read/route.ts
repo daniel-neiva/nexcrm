@@ -3,19 +3,25 @@ import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
     try {
-        const { remoteJid } = await req.json()
+        const { remoteJid, inboxId } = await req.json()
         if (!remoteJid) return NextResponse.json({ error: 'Missing remoteJid' }, { status: 400 })
 
-        // We need the default account ID for Prisma creation
-        let account = await prisma.account.findFirst()
-        if (!account) {
-            account = await prisma.account.create({
-                data: { name: 'Conta Principal', plan: 'pro' }
-            })
+        // Find the specific inbox
+        let inbox;
+        if (inboxId) {
+            inbox = await prisma.inbox.findUnique({ where: { id: inboxId }, include: { account: true } })
+        } else {
+            inbox = await prisma.inbox.findFirst({ include: { account: true } })
         }
 
+        if (!inbox) {
+            return NextResponse.json({ error: 'Nenhuma caixa de entrada configurada' }, { status: 404 })
+        }
+
+        const account = inbox.account
+        const instanceName = inbox.instanceName
+
         // 1. Reset unread count directly in Prisma (CRM side)
-        // For Legacy chats, we might need to create a stub contact first
         let contact = await prisma.contact.findFirst({
             where: { phone: remoteJid, accountId: account.id }
         })
@@ -32,13 +38,17 @@ export async function POST(req: NextRequest) {
         const overrideUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes override
 
         await prisma.conversation.upsert({
-            where: { whatsappJid: remoteJid },
+            where: {
+                whatsappJid: remoteJid,
+                inboxId: inbox.id
+            },
             update: {
                 unreadCount: 0,
                 readOverrideUntil: overrideUntil
             },
             create: {
                 whatsappJid: remoteJid,
+                inboxId: inbox.id,
                 unreadCount: 0,
                 accountId: account.id,
                 contactId: contact.id,
@@ -50,29 +60,31 @@ export async function POST(req: NextRequest) {
         const unreadMessages = await prisma.message.findMany({
             where: {
                 whatsappJid: remoteJid,
+                inboxId: inbox.id,
                 isRead: false,
                 fromMe: false
             },
             select: { whatsappId: true },
-            orderBy: { createdAt: 'desc' }, // Order by newest first
-            take: 1 // Only the last message is needed to mark the whole chat as read up to that point
+            orderBy: { createdAt: 'desc' },
+            take: 1
         })
 
-        // We proceed even if unreadMessages.length is 0 because of Legacy chats.
         if (unreadMessages.length > 0) {
-            // Mark as read internally
             await prisma.message.updateMany({
-                where: { whatsappJid: remoteJid, isRead: false },
+                where: {
+                    whatsappJid: remoteJid,
+                    inboxId: inbox.id,
+                    isRead: false
+                },
                 data: { isRead: true }
             })
         }
 
-        // 2. Call Evolution API to push the "blue ticks" to the client's phone
-        const INSTANCE = process.env.EVOLUTION_INSTANCE
+        // 2. Call Evolution API
         const API_KEY = process.env.EVOLUTION_API_KEY
         const API_URL = process.env.EVOLUTION_API_URL
 
-        if (INSTANCE && API_KEY && API_URL) {
+        if (instanceName && API_KEY && API_URL) {
             let finalPayloadMessages: any[] = [];
 
             if (unreadMessages.length > 0) {
@@ -81,7 +93,6 @@ export async function POST(req: NextRequest) {
                     if (!wid) continue;
 
                     let participant = undefined;
-                    // For groups/LIDs, Evolution REQUIRES the participant ID to mark as read
                     if (remoteJid.includes('@g.us') || remoteJid.includes('@lid')) {
                         try {
                             const raw = await prisma.whatsappEventRaw.findFirst({
@@ -93,7 +104,6 @@ export async function POST(req: NextRequest) {
                                 const p1 = p?.data?.key?.participant || p?.message?.key?.participant;
                                 const pAlt = p?.data?.key?.participantAlt || p?.message?.key?.participantAlt;
 
-                                // WhatsApp Web often ignores reads sent with @lid, so we prioritize the @s.whatsapp.net alias if it exists
                                 if (pAlt && pAlt.includes('@s.whatsapp.net')) {
                                     participant = pAlt;
                                 } else if (p1 && p1.includes('@s.whatsapp.net')) {
@@ -103,7 +113,7 @@ export async function POST(req: NextRequest) {
                                 }
                             }
                         } catch (e) {
-                            console.error('[Mark As Read] Failed to extract participant for group message', e);
+                            console.error('[Mark As Read] Failed to extract participant', e);
                         }
                     }
 
@@ -115,11 +125,8 @@ export async function POST(req: NextRequest) {
                     });
                 }
             } else {
-                // Legacy Flow: The CRM has no record of these unread messages, but the UI wants to clear them.
-                // We must ask Evolution for the absolute latest message in this chat to send the 'read' command for it.
                 try {
-                    console.log(`[Mark As Read] Legacy Chat detected. Fetching latest remote message for ${remoteJid}...`);
-                    const res = await fetch(`${API_URL}/chat/findMessages/${INSTANCE}`, {
+                    const res = await fetch(`${API_URL}/chat/findMessages/${instanceName}`, {
                         method: 'POST',
                         headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ where: { remoteJid }, limit: 1 })
@@ -143,26 +150,13 @@ export async function POST(req: NextRequest) {
                 }
             }
 
-            if (finalPayloadMessages.length === 0) {
-                return NextResponse.json({ success: true, warning: 'No valid whatsappId found to mark as read remotely' });
-            }
-
-            const readPayload = { readMessages: finalPayloadMessages };
-
-            console.log(`[Mark As Read] Sending payload to Evolution: ${JSON.stringify(readPayload)}`)
-
-            const evoRes = await fetch(`${API_URL}/chat/markMessageAsRead/${INSTANCE}`, {
-                method: 'POST',
-                headers: {
-                    'apikey': API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(readPayload)
-            })
-
-            if (!evoRes.ok) {
-                const errorText = await evoRes.text()
-                console.log('[Evolution API] Mark as read successful')
+            if (finalPayloadMessages.length > 0) {
+                const readPayload = { readMessages: finalPayloadMessages };
+                await fetch(`${API_URL}/chat/markMessageAsRead/${instanceName}`, {
+                    method: 'POST',
+                    headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(readPayload)
+                })
             }
         }
 
@@ -172,3 +166,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }
+

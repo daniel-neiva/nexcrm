@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
     Search, Phone, Loader2, Send, Bot, Trash2, ChevronDown, X,
     Check, Volume2, Video, FileText, Play, Download, RotateCcw, Plus, MessageSquarePlus,
@@ -9,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 
 interface Chat {
     id: string
@@ -21,6 +23,7 @@ interface Chat {
     lastActivity: string | null
     unread: number
     profilePicUrl?: string | null
+    inboxId?: string
 }
 
 interface Message {
@@ -183,9 +186,14 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
     }
 }
 
-import { createClient } from "@/lib/supabase/client"
 
-export default function ChatPage() {
+function ChatPageContent() {
+    const searchParams = useSearchParams()
+    const router = useRouter()
+    const activeInboxId = searchParams.get('inbox') || searchParams.get("inboxId")
+
+    const [inboxes, setInboxes] = useState<{ id: string, name: string, status: string }[]>([])
+
     const [chats, setChats] = useState<Chat[]>([])
     const [messages, setMessages] = useState<Message[]>([])
     const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
@@ -214,6 +222,7 @@ export default function ChatPage() {
     const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null)
     const [conversationLabels, setConversationLabels] = useState<{ id: string; name: string; color: string }[]>([])
     const [aiEnabled, setAiEnabled] = useState(true)
+
     const [assigningAgent, setAssigningAgent] = useState(false)
     const [showLabelDropdown, setShowLabelDropdown] = useState(false)
 
@@ -224,16 +233,18 @@ export default function ChatPage() {
         const fetchInitialData = async () => {
             try {
                 // Parallel fetch for speed
-                const [agentsRes, labelsRes, convLabelsRes] = await Promise.all([
+                const [agentsRes, labelsRes, convLabelsRes, inboxesRes] = await Promise.all([
                     fetch('/api/agents'),
                     fetch('/api/labels'),
-                    fetch('/api/labels/conversations')
+                    fetch('/api/labels/conversations'),
+                    fetch('/api/inboxes')
                 ])
 
-                const [agentsData, labelsData, convLabelsData] = await Promise.all([
+                const [agentsData, labelsData, convLabelsData, inboxesData] = await Promise.all([
                     agentsRes.json(),
                     labelsRes.json(),
-                    convLabelsRes.json()
+                    convLabelsRes.json(),
+                    inboxesRes.json()
                 ])
 
                 if (Array.isArray(agentsData)) setAgents(agentsData.filter((a: any) => a.isActive))
@@ -241,12 +252,21 @@ export default function ChatPage() {
                 if (convLabelsData && typeof convLabelsData === 'object' && !convLabelsData.error) {
                     setChatLabelsMap(convLabelsData)
                 }
+                if (Array.isArray(inboxesData)) setInboxes(inboxesData)
             } catch (err) {
                 console.error("Failed to load CRM data:", err)
             }
         }
         fetchInitialData()
     }, [])
+
+    useEffect(() => {
+        if (activeInboxId) {
+            // If switched inbox, clear current chat selection if it doesn't belong to new inbox
+            setSelectedChat(null)
+            setMessages([])
+        }
+    }, [activeInboxId])
 
     // Realtime Incoming Messages
     // Use a ref so the subscription callback always sees the latest selectedChat without re-subscribing
@@ -255,13 +275,13 @@ export default function ChatPage() {
 
     useEffect(() => {
         const channel = supabase.channel('whatsapp_updates')
-            .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+            .on('broadcast', { event: 'new_message' }, ({ payload }: { payload: any }) => {
                 const incomingMsg = payload.message as Message
-                const incomingChat = payload.chat as { id: string, unreadCount: number }
+                const incomingChat = payload.chat as { id: string, unreadCount: number, inboxId: string }
                 const currentSelectedChat = selectedChatRef.current
 
                 // If the message belongs to the currently open chat, append it
-                if (currentSelectedChat?.id === incomingMsg.remoteJid) {
+                if (currentSelectedChat?.id === incomingMsg.remoteJid && (!activeInboxId || payload.message.inboxId === activeInboxId)) {
                     setMessages(prev => {
                         if (prev.some(m => m.id === incomingMsg.id)) return prev
                         return [...prev, incomingMsg]
@@ -270,7 +290,7 @@ export default function ChatPage() {
                     if (!incomingMsg.fromMe) {
                         fetch("/api/whatsapp/read", {
                             method: "POST",
-                            body: JSON.stringify({ remoteJid: incomingMsg.remoteJid })
+                            body: JSON.stringify({ remoteJid: incomingMsg.remoteJid, inboxId: payload.message.inboxId })
                         }).catch(console.error)
                     }
                 }
@@ -300,15 +320,15 @@ export default function ChatPage() {
                     return newChats
                 })
             })
-            .on('broadcast', { event: 'read_receipt' }, ({ payload }) => {
+            .on('broadcast', { event: 'read_receipt' }, ({ payload }: { payload: any }) => {
                 const { chat } = payload
-                if (chat?.id) {
+                if (chat?.id && (!activeInboxId || chat.inboxId === activeInboxId)) {
                     setChats(prev => prev.map(c =>
                         c.id === chat.id ? { ...c, unread: 0 } : c
                     ))
                 }
             })
-            .on('broadcast', { event: 'message_status_update' }, ({ payload }) => {
+            .on('broadcast', { event: 'message_status_update' }, ({ payload }: { payload: any }) => {
                 const { remoteJid, isRead } = payload
                 if (selectedChatRef.current?.id === remoteJid) {
                     setMessages(prev => prev.map(m =>
@@ -316,13 +336,13 @@ export default function ChatPage() {
                     ))
                 }
             })
-            .on('broadcast', { event: 'messages_cleared' }, ({ payload }) => {
+            .on('broadcast', { event: 'messages_cleared' }, ({ payload }: { payload: any }) => {
                 const { remoteJid } = payload
                 if (selectedChatRef.current?.id === remoteJid) {
                     setMessages([])
                 }
             })
-            .on('broadcast', { event: 'labels_updated' }, ({ payload }) => {
+            .on('broadcast', { event: 'labels_updated' }, ({ payload }: { payload: any }) => {
                 const { conversationId, remoteJid } = payload
                 // Refresh the whole label map to keep sidebar labels in sync
                 fetch('/api/labels/conversations')
@@ -348,8 +368,10 @@ export default function ChatPage() {
     // Load chats
     useEffect(() => {
         async function loadChats() {
+            setLoadingChats(true)
             try {
-                const res = await fetch("/api/whatsapp?action=chats", { cache: "no-store" })
+                const url = activeInboxId ? `/api/whatsapp?action=chats&inboxId=${activeInboxId}` : "/api/whatsapp?action=chats"
+                const res = await fetch(url, { cache: "no-store" })
                 const data = await res.json()
                 if (Array.isArray(data)) setChats(data)
             } catch (err) {
@@ -359,14 +381,15 @@ export default function ChatPage() {
             }
         }
         loadChats()
-    }, [])
+    }, [activeInboxId])
 
     // Load messages when chat is selected
     const loadMessages = useCallback(async (chat: Chat) => {
         setLoadingMessages(true)
         try {
             // Fetch messages
-            const res = await fetch(`/api/whatsapp?action=messages&jid=${encodeURIComponent(chat.id)}`, { cache: "no-store" })
+            const url = `/api/whatsapp?action=messages&jid=${encodeURIComponent(chat.id)}&inboxId=${chat.inboxId || activeInboxId || ''}`
+            const res = await fetch(url, { cache: "no-store" })
             const data = await res.json()
             if (Array.isArray(data)) setMessages(data)
 
@@ -523,7 +546,11 @@ export default function ChatPage() {
             await fetch("/api/whatsapp/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ number: selectedChat.id, text }),
+                body: JSON.stringify({
+                    number: selectedChat.id,
+                    text,
+                    inboxId: selectedChat.inboxId || activeInboxId
+                }),
             })
         } catch (err) {
             console.error("Erro ao enviar:", err)
@@ -543,7 +570,11 @@ export default function ChatPage() {
             const res = await fetch('/api/whatsapp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number: phone, text: newChatMessage.trim() })
+                body: JSON.stringify({
+                    number: phone,
+                    text: newChatMessage.trim(),
+                    inboxId: activeInboxId
+                })
             })
 
             const data = await res.json()
@@ -658,7 +689,19 @@ export default function ChatPage() {
             <div className="w-[340px] apple-glass-heavy border-r border-white/10 flex flex-col h-full shrink-0 z-10 shadow-xl">
                 <div className="p-4 border-b border-white/[0.08]">
                     <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-xl font-bold tracking-tight text-white/90">WhatsApp</h2>
+                        <div className="flex flex-col">
+                            <h2 className="text-xl font-bold tracking-tight text-white/90">
+                                {activeInboxId ? inboxes.find(i => i.id === activeInboxId)?.name || 'WhatsApp' : 'Todas as Caixas'}
+                            </h2>
+                            {activeInboxId && (
+                                <button
+                                    onClick={() => router.push('/chat')}
+                                    className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 mt-0.5"
+                                >
+                                    <RotateCcw className="w-3 h-3" /> Limpar filtro
+                                </button>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setShowNewChat(true)}
@@ -667,9 +710,16 @@ export default function ChatPage() {
                             >
                                 <MessageSquarePlus className="w-4 h-4" />
                             </button>
-                            <Badge className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-sm backdrop-blur-sm shadow-emerald-500/10 uppercase tracking-widest px-2">
-                                ● Conectado
-                            </Badge>
+                            {activeInboxId && (
+                                <Badge className={cn(
+                                    "text-[10px] border shadow-sm backdrop-blur-sm uppercase tracking-widest px-2",
+                                    inboxes.find(i => i.id === activeInboxId)?.status === 'CONNECTED'
+                                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20 shadow-emerald-500/10"
+                                        : "bg-red-500/15 text-red-400 border-red-500/20 shadow-red-500/10"
+                                )}>
+                                    ● {inboxes.find(i => i.id === activeInboxId)?.status === 'CONNECTED' ? 'Conectado' : 'Desconectado'}
+                                </Badge>
+                            )}
                         </div>
                     </div>
                     <div className="relative mb-4">
@@ -1176,5 +1226,17 @@ export default function ChatPage() {
                 </div>
             )}
         </div>
+    )
+}
+
+export default function ChatPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex-1 flex items-center justify-center bg-black">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            </div>
+        }>
+            <ChatPageContent />
+        </Suspense>
     )
 }

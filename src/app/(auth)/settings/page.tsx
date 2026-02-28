@@ -16,6 +16,7 @@ const settingSections = [
 ]
 
 export default function SettingsPage() {
+    console.log("[SettingsPage] Rendering v1.5.1")
     return (
         <div className="h-full overflow-y-auto p-6 lg:p-10">
             <div className="max-w-[1000px] mx-auto">
@@ -57,7 +58,7 @@ export default function SettingsPage() {
                 {/* System Stats / Footer Info */}
                 <div className="mt-12 pt-8 border-t border-white/10 animate-slide-up" style={{ animationDelay: "0.2s" }}>
                     <p className="text-xs text-[#64748B] text-center font-medium">
-                        NexCRM v1.5.0 • Licenciado para Daniel Comercial
+                        NexCRM v1.5.1 • Licenciado para Daniel Comercial
                     </p>
                 </div>
             </div>

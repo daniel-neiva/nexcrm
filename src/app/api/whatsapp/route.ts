@@ -28,17 +28,38 @@ export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url)
         const action = searchParams.get('action')
+        const inboxId = searchParams.get('inboxId')
+
+        // Find the specific inbox or the first one if not specified
+        let inbox;
+        if (inboxId) {
+            inbox = await prisma.inbox.findUnique({ where: { id: inboxId } })
+        } else {
+            inbox = await prisma.inbox.findFirst()
+        }
+
+        if (!inbox) {
+            return NextResponse.json({ error: 'Nenhuma caixa de entrada configurada' }, { status: 404 })
+        }
+
+        const instanceName = inbox.instanceName
 
         switch (action) {
             case 'chats': {
                 // Fetch chats, groups, contacts, LID mappings, and Prisma DB cache in parallel
                 const [rawChats, groups, contacts, _lidLoad, dbConversations, dbContacts] = await Promise.all([
-                    getChats(),
-                    getGroups().catch(() => []),
-                    getContacts().catch(() => []),
+                    getChats(instanceName),
+                    getGroups(instanceName).catch(() => []),
+                    getContacts(instanceName).catch(() => []),
                     loadLidMap().catch(() => ({})),
-                    prisma.conversation.findMany({ select: { whatsappJid: true, unreadCount: true, readOverrideUntil: true } }).catch(() => []),
-                    prisma.contact.findMany({ select: { phone: true, name: true, avatarUrl: true } }).catch(() => [])
+                    prisma.conversation.findMany({
+                        where: { inboxId: inbox.id },
+                        select: { whatsappJid: true, unreadCount: true, readOverrideUntil: true }
+                    }).catch(() => []),
+                    prisma.contact.findMany({
+                        where: { accountId: inbox.accountId },
+                        select: { phone: true, name: true, avatarUrl: true }
+                    }).catch(() => [])
                 ])
 
                 const dbUnreadMap = new Map<string, number>()
@@ -202,6 +223,7 @@ export async function GET(request: NextRequest) {
                             isGroup,
                             isLid,
                             profilePicUrl,
+                            inboxId: inbox.id,
                             lastMessage: lastMsgPreview.substring(0, 100),
                             lastActivity: chat.updatedAt as string || (
                                 lmTimestamp ? new Date(lmTimestamp * 1000).toISOString() : null
@@ -220,8 +242,11 @@ export async function GET(request: NextRequest) {
             case 'conversation': {
                 const jid = searchParams.get('jid')
                 if (!jid) return NextResponse.json({ error: 'jid required' }, { status: 400 })
-                const conv = await prisma.conversation.findUnique({
-                    where: { whatsappJid: jid },
+                const conv = await prisma.conversation.findFirst({
+                    where: {
+                        whatsappJid: jid,
+                        inboxId: inbox.id
+                    },
                     select: { id: true, agentId: true, aiEnabled: true, assigneeId: true }
                 })
                 return NextResponse.json(conv || {})
@@ -235,8 +260,8 @@ export async function GET(request: NextRequest) {
 
                 // Fetch messages and contacts in parallel for name resolution
                 const [rawResult, contacts, lidMap] = await Promise.all([
-                    getMessages(remoteJid, 80),
-                    getContacts().catch(() => []),
+                    getMessages(remoteJid, 80, instanceName),
+                    getContacts(instanceName).catch(() => []),
                     loadLidMap().catch(() => ({} as Record<string, string>)),
                 ])
 

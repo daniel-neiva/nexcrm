@@ -1,6 +1,5 @@
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || ''
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || ''
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || ''
 
 async function evolutionFetch<T = unknown>(
     endpoint: string,
@@ -28,25 +27,25 @@ async function evolutionFetch<T = unknown>(
 
 // ===== Instance =====
 
-export async function getInstanceInfo() {
-    return evolutionFetch(`/instance/fetchInstances?instanceName=${EVOLUTION_INSTANCE}`)
+export async function getInstanceInfo(instanceName: string) {
+    return evolutionFetch(`/instance/fetchInstances?instanceName=${instanceName}`)
 }
 
-export async function getInstanceStatus() {
-    return evolutionFetch(`/instance/connectionState/${EVOLUTION_INSTANCE}`)
+export async function getInstanceStatus(instanceName: string) {
+    return evolutionFetch(`/instance/connectionState/${instanceName}`)
 }
 
 // ===== Messages =====
 
-export async function sendTextMessage(number: string, text: string) {
-    return evolutionFetch(`/message/sendText/${EVOLUTION_INSTANCE}`, {
+export async function sendTextMessage(instanceName: string, number: string, text: string) {
+    return evolutionFetch(`/message/sendText/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({ number, text }),
     })
 }
 
-export async function markAsRead(remoteJid: string, messageIds: string[]) {
-    return evolutionFetch(`/chat/markMessageAsRead/${EVOLUTION_INSTANCE}`, {
+export async function markAsRead(instanceName: string, remoteJid: string, messageIds: string[]) {
+    return evolutionFetch(`/chat/markMessageAsRead/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({
             readMessages: messageIds.map(id => ({
@@ -59,12 +58,13 @@ export async function markAsRead(remoteJid: string, messageIds: string[]) {
 }
 
 export async function sendMediaMessage(
+    instanceName: string,
     number: string,
     mediaUrl: string,
     caption?: string,
     mediaType: 'image' | 'video' | 'audio' | 'document' = 'image'
 ) {
-    return evolutionFetch(`/message/sendMedia/${EVOLUTION_INSTANCE}`, {
+    return evolutionFetch(`/message/sendMedia/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({ number, mediatype: mediaType, media: mediaUrl, caption }),
     })
@@ -72,13 +72,13 @@ export async function sendMediaMessage(
 
 // ===== Contacts =====
 
-export async function getContacts() {
+export async function getContacts(instanceName: string) {
     return evolutionFetch<Array<{
         id: string
         pushName?: string
         remoteJid: string
         profilePictureUrl?: string | null
-    }>>(`/chat/findContacts/${EVOLUTION_INSTANCE}`, {
+    }>>(`/chat/findContacts/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({}),
     })
@@ -86,15 +86,15 @@ export async function getContacts() {
 
 // ===== Chats =====
 
-export async function getChats() {
-    return evolutionFetch<Array<Record<string, unknown>>>(`/chat/findChats/${EVOLUTION_INSTANCE}`, {
+export async function getChats(instanceName: string) {
+    return evolutionFetch<Array<Record<string, unknown>>>(`/chat/findChats/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({}),
     })
 }
 
-export async function getMessages(remoteJid: string, count: number = 50) {
-    return evolutionFetch(`/chat/findMessages/${EVOLUTION_INSTANCE}`, {
+export async function getMessages(instanceName: string, remoteJid: string, count: number = 50) {
+    return evolutionFetch(`/chat/findMessages/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({
             where: { key: { remoteJid } },
@@ -105,7 +105,7 @@ export async function getMessages(remoteJid: string, count: number = 50) {
 
 // ===== Groups =====
 
-export async function getGroups() {
+export async function getGroups(instanceName: string) {
     return evolutionFetch<Array<{
         id: string
         subject: string
@@ -115,14 +115,14 @@ export async function getGroups() {
         creation?: number
         desc?: string
         profilePictureUrl?: string | null
-    }>>(`/group/fetchAllGroups/${EVOLUTION_INSTANCE}?getParticipants=false`)
+    }>>(`/group/fetchAllGroups/${instanceName}?getParticipants=false`)
 }
 
 // ===== Media =====
 
-export async function getBase64FromMedia(messageId: string, remoteJid: string, fromMe: boolean) {
+export async function getBase64FromMedia(instanceName: string, messageId: string, remoteJid: string, fromMe: boolean) {
     return evolutionFetch<{ base64: string; mimetype: string; fileName?: string }>(
-        `/chat/getBase64FromMediaMessage/${EVOLUTION_INSTANCE}`,
+        `/chat/getBase64FromMediaMessage/${instanceName}`,
         {
             method: 'POST',
             body: JSON.stringify({
@@ -141,10 +141,10 @@ export async function getBase64FromMedia(messageId: string, remoteJid: string, f
 
 // ===== Profile Picture =====
 
-export async function getProfilePicture(number: string) {
+export async function getProfilePicture(instanceName: string, number: string) {
     try {
         return await evolutionFetch<{ profilePictureUrl?: string }>(
-            `/chat/fetchProfilePictureUrl/${EVOLUTION_INSTANCE}`,
+            `/chat/fetchProfilePictureUrl/${instanceName}`,
             {
                 method: 'POST',
                 body: JSON.stringify({ number }),
@@ -157,8 +157,8 @@ export async function getProfilePicture(number: string) {
 
 // ===== Webhook =====
 
-export async function setWebhook(webhookUrl: string) {
-    return evolutionFetch(`/webhook/set/${EVOLUTION_INSTANCE}`, {
+export async function setWebhook(instanceName: string, webhookUrl: string) {
+    return evolutionFetch(`/webhook/set/${instanceName}`, {
         method: 'POST',
         body: JSON.stringify({
             webhook: {
@@ -194,4 +194,3 @@ export function isLidJid(jid: string): boolean {
     return jid.endsWith('@lid')
 }
 
-export { EVOLUTION_INSTANCE }

@@ -15,9 +15,10 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json()
+        console.log('[Processor] Received webhook:', JSON.stringify(body, null, 2))
 
         // Verify it's a Supabase Database Webhook for our raw events table
-        if (body.type !== 'INSERT' || body.table !== 'WhatsappEventRaw') {
+        if (body.type !== 'INSERT' || (body.table !== 'WhatsappEventRaw' && body.table !== 'whatsappeventraw')) {
             return NextResponse.json({ status: 'ignored' })
         }
 
@@ -31,8 +32,25 @@ export async function POST(request: NextRequest) {
         const event = rawEvent.eventType || ''
         const payload = rawEvent.payload || {}
         const data = payload.data || payload
+        const instanceName = rawEvent.instance || data.instance || ''
 
-        const messages = Array.isArray(data) ? data : [data]
+        if (!instanceName) {
+            console.error('[Processor] Missing instance name in raw event')
+            return NextResponse.json({ status: 'error', message: 'Missing instance' }, { status: 400 })
+        }
+
+        // Find the Inbox
+        const inbox = await prisma.inbox.findUnique({
+            where: { instanceName },
+            include: { account: true }
+        })
+
+        if (!inbox) {
+            console.warn(`[Processor] Instance "${instanceName}" not found in database. Skipping.`)
+            return NextResponse.json({ status: 'ignored' })
+        }
+
+        const messages = Array.isArray(data) ? data : (data.messages || [data])
 
         for (const msg of messages) {
             const key = msg.key || {}
@@ -57,6 +75,20 @@ export async function POST(request: NextRequest) {
 
             // Sync to Database if it is a real message creation event
             if (event === 'messages.upsert') {
+                // Proactive Status Sync
+                if (inbox.status !== 'CONNECTED') {
+                    await prisma.inbox.update({
+                        where: { id: inbox.id },
+                        data: { status: 'CONNECTED' }
+                    })
+                    // Broadcast status update
+                    await supabaseAdmin.channel('whatsapp_updates').send({
+                        type: 'broadcast',
+                        event: 'inbox_status_updated',
+                        payload: { inboxId: inbox.id, status: 'CONNECTED' }
+                    })
+                }
+
                 const m = msg.message || {}
 
                 // Determine message content
@@ -120,22 +152,14 @@ export async function POST(request: NextRequest) {
                     content = 'Mensagem de sistema ou mídia não suportada'
                 }
 
-                // We need an Account ID and Contact ID to save in Prisma CRM structure
-                let account = await prisma.account.findFirst()
-                if (!account) {
-                    account = await prisma.account.create({
-                        data: { name: 'Conta Principal', plan: 'pro' }
-                    })
-                }
-
                 // Upsert Contact
                 let contact = await prisma.contact.findFirst({
-                    where: { phone: remoteJid, accountId: account.id }
+                    where: { phone: remoteJid, accountId: inbox.accountId }
                 })
                 if (!contact) {
                     let avatarUrl = null;
                     try {
-                        const picData = await getProfilePicture(remoteJid);
+                        const picData = await getProfilePicture(instanceName, remoteJid);
                         if (picData?.profilePictureUrl) {
                             avatarUrl = picData.profilePictureUrl;
                         }
@@ -145,7 +169,7 @@ export async function POST(request: NextRequest) {
 
                     contact = await prisma.contact.create({
                         data: {
-                            accountId: account.id,
+                            accountId: inbox.accountId,
                             name: pushName || remoteJid,
                             phone: remoteJid,
                             avatarUrl: avatarUrl
@@ -154,7 +178,7 @@ export async function POST(request: NextRequest) {
                 } else if (!contact.avatarUrl) {
                     // Try to backfill missing avatars on existing contacts when they message us
                     try {
-                        const picData = await getProfilePicture(remoteJid);
+                        const picData = await getProfilePicture(instanceName, remoteJid);
                         if (picData?.profilePictureUrl) {
                             contact = await prisma.contact.update({
                                 where: { id: contact.id },
@@ -168,7 +192,12 @@ export async function POST(request: NextRequest) {
 
                 // Upsert Conversation
                 let conversation = await prisma.conversation.findUnique({
-                    where: { whatsappJid: remoteJid },
+                    where: {
+                        whatsappJid_inboxId: {
+                            whatsappJid: remoteJid,
+                            inboxId: inbox.id
+                        }
+                    },
                     select: {
                         id: true,
                         whatsappJid: true,
@@ -184,7 +213,8 @@ export async function POST(request: NextRequest) {
                     conversation = await prisma.conversation.create({
                         data: {
                             whatsappJid: remoteJid,
-                            accountId: account.id,
+                            accountId: inbox.accountId,
+                            inboxId: inbox.id,
                             contactId: contact.id,
                             channel: 'WHATSAPP',
                             status: 'OPEN',
@@ -221,6 +251,7 @@ export async function POST(request: NextRequest) {
                         sender: fromMe ? 'USER' : 'CONTACT',
                         senderName: pushName,
                         conversationId: conversation.id,
+                        inboxId: inbox.id,
                         isRead: fromMe, // Sent messages are read by default
                     },
                     update: {} // No update needed for now if it already exists
@@ -228,7 +259,7 @@ export async function POST(request: NextRequest) {
 
                 // Mark incoming message as read in WhatsApp (shows blue ✓✓ to the lead)
                 if (!fromMe && messageId) {
-                    markAsRead(remoteJid, [messageId]).catch(() => {
+                    markAsRead(instanceName, remoteJid, [messageId]).catch(() => {
                         // Non-critical: don't fail the pipeline if mark-as-read fails
                     })
                 }
@@ -257,7 +288,7 @@ export async function POST(request: NextRequest) {
 
                     // Confirmation message
                     if (!fromMe) {
-                        await sendTextMessage(remoteJid, "🗑️ *Memória limpa!* Começando do zero.")
+                        await sendTextMessage(instanceName, remoteJid, "🗑️ *Memória limpa!* Começando do zero.")
                     }
 
                     return NextResponse.json({ status: 'reset' })
@@ -278,10 +309,12 @@ export async function POST(request: NextRequest) {
                             senderName: savedMessage.senderName,
                             hasMedia: ['image', 'video', 'audio', 'document', 'sticker'].includes(savedMessage.type),
                             isRead: savedMessage.isRead,
+                            inboxId: inbox.id
                         },
                         chat: {
                             id: conversation.whatsappJid,
-                            unreadCount: conversation.unreadCount
+                            unreadCount: conversation.unreadCount,
+                            inboxId: inbox.id
                         }
                     }
                 })
@@ -295,7 +328,7 @@ export async function POST(request: NextRequest) {
                     // Capture snapshot of variables needed inside after()
                     const _conversationId = conversation.id
                     const _agentId = conversation.agentId ?? null
-                    const _accountId = account.id
+                    const _accountId = inbox.accountId
                     const _content = content
                     const _remoteJid = remoteJid
 
@@ -435,7 +468,7 @@ export async function POST(request: NextRequest) {
                             }
 
                             // Send response via Evolution API (WhatsApp)
-                            await sendTextMessage(_remoteJid, aiResponse)
+                            await sendTextMessage(instanceName, _remoteJid, aiResponse)
 
                             // Broadcast AI message to CRM chat UI in real-time
                             await supabaseAdmin.channel('whatsapp_updates').send({
@@ -503,12 +536,12 @@ export async function POST(request: NextRequest) {
                     if (realJidToClear) {
                         // Update database
                         await prisma.conversation.updateMany({
-                            where: { whatsappJid: realJidToClear },
+                            where: { whatsappJid: realJidToClear, inboxId: inbox.id },
                             data: { unreadCount: 0 }
                         })
 
                         await prisma.message.updateMany({
-                            where: { whatsappJid: realJidToClear, isRead: false },
+                            where: { whatsappJid: realJidToClear, inboxId: inbox.id, isRead: false },
                             data: { isRead: true }
                         })
 
@@ -546,7 +579,7 @@ export async function POST(request: NextRequest) {
                     // If Evolution stripped the unreadCount from chats.update, fetch it live
                     if (finalUnreadCount === undefined) {
                         try {
-                            const allChats = await getChats();
+                            const allChats = await getChats(instanceName);
                             if (Array.isArray(allChats)) {
                                 const targetChat = allChats.find(c => c.id === chatJid || c.remoteJid === chatJid);
                                 if (targetChat) {
@@ -560,7 +593,12 @@ export async function POST(request: NextRequest) {
 
                     if (finalUnreadCount !== undefined) {
                         const existingConv = await prisma.conversation.findUnique({
-                            where: { whatsappJid: chatJid },
+                            where: {
+                                whatsappJid_inboxId: {
+                                    whatsappJid: chatJid,
+                                    inboxId: inbox.id
+                                }
+                            },
                             select: { readOverrideUntil: true }
                         });
 
@@ -568,7 +606,7 @@ export async function POST(request: NextRequest) {
 
                         if (!isOverride) {
                             await prisma.conversation.updateMany({
-                                where: { whatsappJid: chatJid },
+                                where: { whatsappJid: chatJid, inboxId: inbox.id },
                                 data: { unreadCount: Number(finalUnreadCount) }
                             });
                         }
@@ -576,7 +614,7 @@ export async function POST(request: NextRequest) {
                         // If read completely, mark all associated unread messages as read
                         if (Number(finalUnreadCount) === 0) {
                             await prisma.message.updateMany({
-                                where: { whatsappJid: chatJid, isRead: false },
+                                where: { whatsappJid: chatJid, inboxId: inbox.id, isRead: false },
                                 data: { isRead: true }
                             });
                         }
@@ -586,7 +624,7 @@ export async function POST(request: NextRequest) {
                             type: 'broadcast',
                             event: 'read_receipt',
                             payload: {
-                                chat: { id: chatJid, unreadCount: Number(finalUnreadCount) }
+                                chat: { id: chatJid, unreadCount: Number(finalUnreadCount), inboxId: inbox.id }
                             }
                         });
                     }
@@ -594,11 +632,11 @@ export async function POST(request: NextRequest) {
                     // Let's also backfill group avatars just in case the initial creation missed it
                     if (chatJid.includes('@g.us') || chatJid.includes('@lid')) {
                         const existingContact = await prisma.contact.findFirst({
-                            where: { phone: chatJid }
+                            where: { phone: chatJid, accountId: inbox.accountId }
                         });
                         if (existingContact && !existingContact.avatarUrl) {
                             try {
-                                const picData = await getProfilePicture(chatJid);
+                                const picData = await getProfilePicture(instanceName, chatJid);
                                 if (picData?.profilePictureUrl) {
                                     await prisma.contact.update({
                                         where: { id: existingContact.id },
@@ -609,6 +647,32 @@ export async function POST(request: NextRequest) {
                                 // Ignore
                             }
                         }
+                    }
+                }
+            }
+
+            // Sync Connection Status
+            if (event === 'connection.update') {
+                const state = msg.state || data.state || ''
+                if (state) {
+                    const newStatus = state === 'open' ? 'CONNECTED' : 'DISCONNECTED'
+
+                    if (inbox.status !== newStatus) {
+                        await prisma.inbox.update({
+                            where: { id: inbox.id },
+                            data: { status: newStatus }
+                        })
+
+                        // Broadcast status update to clients
+                        await supabaseAdmin.channel('whatsapp_updates').send({
+                            type: 'broadcast',
+                            event: 'inbox_status_updated',
+                            payload: {
+                                inboxId: inbox.id,
+                                status: newStatus
+                            }
+                        })
+                        console.log(`[Processor] Instance ${instanceName} connection status updated to ${newStatus}`)
                     }
                 }
             }

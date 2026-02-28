@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { ConnectionStatusBanner } from "@/components/dashboard/ConnectionStatusBanner"
 
 interface DashboardStats {
     totalConversations: number
@@ -134,6 +135,7 @@ export default function DashboardPage() {
 
     return (
         <div className="h-full overflow-y-auto p-6 lg:p-8">
+            <ConnectionStatusBanner />
             {/* Header */}
             <div className="mb-8 animate-slide-up">
                 <h1 className="text-3xl font-bold tracking-tight text-white/90">

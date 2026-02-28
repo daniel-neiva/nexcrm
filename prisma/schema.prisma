@@ -23,6 +23,7 @@ model Account {
   labels          Label[]
   teams           Team[]
   users           User[]
+  inboxes         Inbox[]
 }
 
 model User {
@@ -60,7 +61,7 @@ model Contact {
 
 model Conversation {
   id                String              @id @default(cuid())
-  whatsappJid       String?             @unique
+  whatsappJid       String?
   status            ConversationStatus  @default(OPEN)
   channel           Channel             @default(WEB)
   unreadCount       Int                 @default(0)
@@ -70,6 +71,7 @@ model Conversation {
   contactId         String
   assigneeId        String?
   agentId           String?
+  inboxId           String?
   lastReadMessageId String?
   readOverrideUntil DateTime?
   aiEnabled         Boolean             @default(true)
@@ -77,8 +79,12 @@ model Conversation {
   agent             Agent?              @relation(fields: [agentId], references: [id])
   assignee          User?               @relation("assignee", fields: [assigneeId], references: [id])
   contact           Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  inbox             Inbox?              @relation(fields: [inboxId], references: [id], onDelete: SetNull)
   labels            ConversationLabel[]
   messages          Message[]
+
+  @@unique([whatsappJid, inboxId])
+  @@index([inboxId])
 }
 
 model Message {
@@ -96,8 +102,31 @@ model Message {
   createdAt      DateTime     @default(now())
   conversationId String
   userId         String?
+  inboxId        String?
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User?        @relation(fields: [userId], references: [id])
+  inbox          Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+
+  @@index([inboxId])
+  @@index([conversationId])
+}
+
+
+model Inbox {
+  id           String   @id @default(cuid())
+  name         String
+  instanceName String   @unique
+  status       String   @default("DISCONNECTED") // CONNECTED, DISCONNECTED
+  phoneNumber  String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  conversations Conversation[]
+  messages      Message[]
 }
 
 model Agent {

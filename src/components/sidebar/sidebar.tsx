@@ -76,7 +76,35 @@ export function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
     const [userName, setUserName] = useState("")
     const [userInitials, setUserInitials] = useState("")
+    const [unreadCount, setUnreadCount] = useState(0)
+    const [inboxes, setInboxes] = useState<any[]>([])
+    const [loadingInboxes, setLoadingInboxes] = useState(true)
     const supabase = createClient()
+
+    const fetchUnreadCount = async () => {
+        try {
+            const res = await fetch("/api/conversations/unread-count")
+            const data = await res.json()
+            if (typeof data.totalUnreadCount === 'number') {
+                setUnreadCount(data.totalUnreadCount)
+            }
+        } catch (err) {
+            console.error("Erro ao carregar unread count:", err)
+        }
+    }
+
+    const fetchInboxes = async () => {
+        try {
+            const res = await fetch("/api/inboxes")
+            const data = await res.json()
+            console.log("[Sidebar] Inboxes fetched:", data)
+            if (Array.isArray(data)) setInboxes(data)
+        } catch (err) {
+            console.error("Erro ao carregar inboxes:", err)
+        } finally {
+            setLoadingInboxes(false)
+        }
+    }
 
     useEffect(() => {
         async function loadUser() {
@@ -93,6 +121,29 @@ export function Sidebar() {
             }
         }
         loadUser()
+        fetchUnreadCount()
+        fetchInboxes()
+
+        // Realtime subscription for unread count and inboxes
+        const channel = supabase
+            .channel('whatsapp_updates')
+            .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+                const { message } = payload
+                if (message && !message.fromMe) {
+                    fetchUnreadCount()
+                }
+            })
+            .on('broadcast', { event: 'read_receipt' }, () => {
+                fetchUnreadCount()
+            })
+            .on('broadcast', { event: 'inbox_status_updated' }, () => {
+                fetchInboxes()
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
     }, [supabase])
 
     async function handleSignOut() {
@@ -107,6 +158,7 @@ export function Sidebar() {
                 "glass-sidebar h-screen flex flex-col transition-all duration-300 ease-in-out relative z-20",
                 collapsed ? "w-[72px]" : "w-[260px]"
             )}
+            data-version="1.5.0-inboxes"
         >
             {/* Logo */}
             <div className="flex items-center h-16 px-4 border-b border-white/[0.08]">
@@ -123,59 +175,128 @@ export function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-                {navItems.map((item) => {
-                    const isActive = pathname.startsWith(item.href)
-                    const Icon = item.icon
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+                <nav className="space-y-1">
+                    {navItems.map((item) => {
+                        const isActive = pathname.startsWith(item.href)
+                        const Icon = item.icon
+                        const isChat = item.href === "/chat"
 
-                    const linkContent = (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={cn(
-                                "flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
-                                isActive
-                                    ? "apple-glass-panel text-white shadow-sm"
-                                    : "text-white/60 hover:text-white hover:bg-white/[0.06]"
-                            )}
-                        >
-                            {/* Active indicator */}
-                            {isActive && (
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-400 to-violet-400" />
-                            )}
-
-                            <Icon
+                        const linkContent = (
+                            <Link
+                                key={item.href}
+                                href={item.href}
                                 className={cn(
-                                    "w-5 h-5 transition-colors shrink-0",
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
                                     isActive
-                                        ? "text-blue-400"
-                                        : "text-white/50 group-hover:text-white/90"
+                                        ? "apple-glass-panel text-white shadow-sm"
+                                        : "text-white/60 hover:text-white hover:bg-white/[0.06]"
                                 )}
-                            />
+                            >
+                                {/* Active indicator */}
+                                {isActive && (
+                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-400 to-violet-400" />
+                                )}
 
-                            {!collapsed && (
-                                <span className="animate-fade-in">{item.label}</span>
-                            )}
-                        </Link>
-                    )
+                                <div className="relative shrink-0">
+                                    <Icon
+                                        className={cn(
+                                            "w-5 h-5 transition-colors",
+                                            isActive
+                                                ? "text-blue-400"
+                                                : "text-white/50 group-hover:text-white/90"
+                                        )}
+                                    />
+                                    {isChat && unreadCount > 0 && (
+                                        <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[9px] bg-red-500 border-0 flex items-center justify-center text-white p-0 shadow-sm animate-pulse">
+                                            {unreadCount > 99 ? '99+' : unreadCount}
+                                        </Badge>
+                                    )}
+                                </div>
 
-                    if (collapsed) {
-                        return (
-                            <Tooltip key={item.href} delayDuration={0}>
-                                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                                <TooltipContent
-                                    side="right"
-                                    className="apple-glass-panel text-white outline-none border-white/10"
-                                >
-                                    {item.label}
-                                </TooltipContent>
-                            </Tooltip>
+                                {!collapsed && (
+                                    <span className="animate-fade-in flex-1">{item.label}</span>
+                                )}
+                            </Link>
                         )
-                    }
 
-                    return linkContent
-                })}
-            </nav>
+                        if (collapsed) {
+                            return (
+                                <Tooltip key={item.href} delayDuration={0}>
+                                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                                    <TooltipContent
+                                        side="right"
+                                        className="apple-glass-panel text-white outline-none border-white/10"
+                                    >
+                                        {item.label}
+                                    </TooltipContent>
+                                </Tooltip>
+                            )
+                        }
+
+                        return linkContent
+                    })}
+                </nav>
+
+                {/* Inboxes Section (Jus CRM Style) */}
+                {!collapsed && (
+                    <div className="space-y-3 px-2 animate-fade-in">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/30">Caixas de Entrada</span>
+                            <Link href="/settings/whatsapp" className="text-[10px] font-bold text-blue-400/70 hover:text-blue-400 transition-colors uppercase">Gerenciar</Link>
+                        </div>
+                        <div className="space-y-2">
+                            {loadingInboxes ? (
+                                <div className="space-y-2">
+                                    {[1, 2].map(i => (
+                                        <div key={i} className="h-12 w-full bg-white/5 rounded-2xl animate-pulse" />
+                                    ))}
+                                </div>
+                            ) : inboxes.length === 0 ? (
+                                <Link
+                                    href="/settings/whatsapp"
+                                    className="block p-4 rounded-2xl border border-dashed border-white/10 hover:border-white/20 transition-all text-center group"
+                                >
+                                    <p className="text-[10px] font-medium text-white/40 group-hover:text-white/60">Nenhuma caixa conectada</p>
+                                    <span className="text-[10px] text-blue-400 font-bold mt-1 inline-block">CONECTAR AGORA</span>
+                                </Link>
+                            ) : (
+                                inboxes.map(inbox => (
+                                    <div key={inbox.id} className="apple-glass-panel p-3 rounded-2xl border border-white/5 hover:bg-white/[0.04] transition-all group">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center border border-white/10 overflow-hidden">
+                                                    {inbox.avatarUrl ? (
+                                                        <img src={inbox.avatarUrl} alt={inbox.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <MessageSquare className="w-4 h-4 text-white/40" />
+                                                    )}
+                                                </div>
+                                                <div className={cn(
+                                                    "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#030712]",
+                                                    inbox.status === 'CONNECTED' ? "bg-green-500" : "bg-red-500"
+                                                )} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[11px] font-bold text-white/90 truncate">{inbox.name}</p>
+                                                <p className="text-[9px] text-white/40 truncate">{inbox.phoneNumber || inbox.instanceName}</p>
+                                            </div>
+                                        </div>
+                                        {inbox.status !== 'CONNECTED' && (
+                                            <Link
+                                                href={`/settings/whatsapp/${inbox.id}`}
+                                                className="mt-2 block w-full py-1.5 rounded-xl bg-blue-500 text-[9px] font-bold text-white text-center hover:bg-blue-600 transition-colors uppercase"
+                                            >
+                                                Conectar
+                                            </Link>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Footer */}
             <div className="px-3 py-4 border-t border-white/[0.08] space-y-1">
@@ -188,9 +309,7 @@ export function Sidebar() {
                         >
                             <div className="relative shrink-0">
                                 <Bell className="w-5 h-5" />
-                                <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] bg-blue-500 border-0 text-white animate-pulse">
-                                    3
-                                </Badge>
+                                {/* Badge removed since we now have the Chat badge for unread messages */}
                             </div>
                             {!collapsed && <span className="animate-fade-in">Notificações</span>}
                         </Link>
