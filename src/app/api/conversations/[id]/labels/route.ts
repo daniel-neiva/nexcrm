@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 // GET labels for a conversation
 export async function GET(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
         const supabase = await createClient()
@@ -13,7 +13,7 @@ export async function GET(
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const labels = await prisma.conversationLabel.findMany({
-            where: { conversationId: params.conversationId },
+            where: { conversationId: params.id },
             include: { label: true }
         })
 
@@ -27,7 +27,7 @@ export async function GET(
 // POST add a label to a conversation
 export async function POST(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
         const supabase = await createClient()
@@ -39,7 +39,7 @@ export async function POST(
 
         await prisma.conversationLabel.create({
             data: {
-                conversationId: params.conversationId,
+                conversationId: params.id,
                 labelId
             }
         })
@@ -58,7 +58,7 @@ export async function POST(
 // DELETE remove a label from a conversation
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
         const supabase = await createClient()
@@ -71,7 +71,7 @@ export async function DELETE(
         await prisma.conversationLabel.delete({
             where: {
                 conversationId_labelId: {
-                    conversationId: params.conversationId,
+                    conversationId: params.id,
                     labelId
                 }
             }
