@@ -361,7 +361,7 @@ export default function ChatPage() {
         if (selectedChat) loadMessages(selectedChat)
     }, [selectedChat, loadMessages])
 
-    // Load conversation metadata (agent assignment + labels) when chat changes
+    // Load conversation metadata (agent assignment) when chat changes
     useEffect(() => {
         if (!selectedChat) { setConversationId(null); setAssignedAgentId(null); setConversationLabels([]); return }
         fetch(`/api/whatsapp?action=conversation&jid=${encodeURIComponent(selectedChat.id)}`, { cache: 'no-store' })
@@ -371,15 +371,21 @@ export default function ChatPage() {
                     setConversationId(data.id)
                     setAssignedAgentId(data.agentId || null)
                     setAiEnabled(data.aiEnabled ?? true)
-                    // Fetch labels for this conversation
-                    fetch(`/api/conversations/${data.id}/labels`, { cache: 'no-store' })
-                        .then(r => r.json())
-                        .then(labels => { if (Array.isArray(labels)) setConversationLabels(labels) })
-                        .catch(() => setConversationLabels([]))
+                } else {
+                    setConversationId(null)
                 }
             })
-            .catch(() => { })
+            .catch(() => { setConversationId(null) })
     }, [selectedChat?.id])
+
+    // Load labels when conversationId is available (separate effect for reliability)
+    useEffect(() => {
+        if (!conversationId) { setConversationLabels([]); return }
+        fetch(`/api/conversations/${conversationId}/labels`, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(labels => { if (Array.isArray(labels)) setConversationLabels(labels); else setConversationLabels([]) })
+            .catch(() => setConversationLabels([]))
+    }, [conversationId])
 
     // Add label to conversation
     const addLabelToConversation = async (labelId: string) => {
