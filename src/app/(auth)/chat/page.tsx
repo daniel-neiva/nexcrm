@@ -898,9 +898,16 @@ export default function ChatPage() {
                             </div>
                         </div>
                         <h3 className="text-2xl font-bold tracking-tight text-white/90 mb-2">Workspace Vazio</h3>
-                        <p className="text-sm font-medium text-white/50 max-w-xs">
+                        <p className="text-sm font-medium text-white/50 max-w-xs mb-6">
                             Selecione uma conversa do lado esquerdo para começar a interagir.
                         </p>
+                        <button
+                            onClick={() => setShowNewChat(true)}
+                            className="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500/20 to-violet-500/20 border border-blue-500/20 hover:from-blue-500/30 hover:to-violet-500/30 hover:border-blue-500/30 transition-all duration-300 group"
+                        >
+                            <MessageSquarePlus className="w-5 h-5 text-blue-400 group-hover:text-blue-300" />
+                            <span className="text-sm font-semibold text-white/80 group-hover:text-white">Nova Conversa</span>
+                        </button>
                     </div>
                 </div>
             )}
