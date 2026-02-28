@@ -13,6 +13,7 @@ import {
     LogOut,
     ChevronLeft,
     ChevronRight,
+    Kanban,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import {
@@ -35,6 +36,11 @@ const navItems = [
         label: "Contatos",
         href: "/contacts",
         icon: Users,
+    },
+    {
+        label: "Pipeline",
+        href: "/pipeline",
+        icon: Kanban,
     },
     {
         label: "Agentes IA",
