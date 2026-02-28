@@ -513,12 +513,20 @@ export default function ChatPage() {
 
         setSendingNewChat(true)
         try {
-            const number = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
-            await fetch('/api/whatsapp/send', {
+            // Evolution API expects just the phone number, not the JID
+            const res = await fetch('/api/whatsapp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number, text: newChatMessage.trim() })
+                body: JSON.stringify({ number: phone, text: newChatMessage.trim() })
             })
+
+            const data = await res.json()
+
+            if (!res.ok) {
+                console.error('Send failed:', data)
+                alert(`Erro ao enviar: ${data?.error || 'Erro desconhecido'}`)
+                return
+            }
 
             setShowNewChat(false)
             setNewChatPhone('')
@@ -531,7 +539,7 @@ export default function ChatPage() {
                     const data = await res.json()
                     if (Array.isArray(data)) setChats(data)
                 } catch { }
-            }, 1500)
+            }, 2000)
         } catch (err) {
             console.error('Erro ao iniciar conversa:', err)
             alert('Erro ao enviar mensagem. Verifique o número.')
