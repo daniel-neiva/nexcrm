@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+    LayoutDashboard,
     MessageSquare,
     Users,
     Bot,
@@ -27,6 +28,11 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 const navItems = [
+    {
+        label: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+    },
     {
         label: "Chat",
         href: "/chat",
