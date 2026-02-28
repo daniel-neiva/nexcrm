@@ -204,38 +204,48 @@ export default function ChatPage() {
     const [newChatMessage, setNewChatMessage] = useState("")
     const [sendingNewChat, setSendingNewChat] = useState(false)
 
-    // Agent assignment state
+    // CRM state (Agents & Labels)
     const [agents, setAgents] = useState<{ id: string; name: string; isActive: boolean }[]>([])
+    const [allLabels, setAllLabels] = useState<{ id: string; name: string; color: string }[]>([])
+    const [chatLabelsMap, setChatLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({})
+    const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null)
+
     const [conversationId, setConversationId] = useState<string | null>(null)
     const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null)
+    const [conversationLabels, setConversationLabels] = useState<{ id: string; name: string; color: string }[]>([])
     const [aiEnabled, setAiEnabled] = useState(true)
     const [assigningAgent, setAssigningAgent] = useState(false)
-
-    // Labels state
-    const [allLabels, setAllLabels] = useState<{ id: string; name: string; color: string }[]>([])
-    const [conversationLabels, setConversationLabels] = useState<{ id: string; name: string; color: string }[]>([])
     const [showLabelDropdown, setShowLabelDropdown] = useState(false)
-    const [labelFilter, setLabelFilter] = useState<string | null>(null)
-    const [showLabelFilter, setShowLabelFilter] = useState(false)
-    // Map of all chat labels: { [whatsappJid]: [{ id, name, color }] }
-    const [chatLabelsMap, setChatLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({})
 
     const supabase = createClient()
 
-    // Fetch available AI agents, labels, and all conversation labels on mount
+    // Initial Data Load
     useEffect(() => {
-        fetch('/api/agents')
-            .then(r => r.json())
-            .then(data => { if (Array.isArray(data)) setAgents(data.filter((a: any) => a.isActive)) })
-            .catch(() => { })
-        fetch('/api/labels')
-            .then(r => r.json())
-            .then(data => { if (Array.isArray(data)) setAllLabels(data) })
-            .catch(() => { })
-        fetch('/api/labels/conversations')
-            .then(r => r.json())
-            .then(data => { if (data && typeof data === 'object' && !data.error) setChatLabelsMap(data) })
-            .catch(() => { })
+        const fetchInitialData = async () => {
+            try {
+                // Parallel fetch for speed
+                const [agentsRes, labelsRes, convLabelsRes] = await Promise.all([
+                    fetch('/api/agents'),
+                    fetch('/api/labels'),
+                    fetch('/api/labels/conversations')
+                ])
+
+                const [agentsData, labelsData, convLabelsData] = await Promise.all([
+                    agentsRes.json(),
+                    labelsRes.json(),
+                    convLabelsRes.json()
+                ])
+
+                if (Array.isArray(agentsData)) setAgents(agentsData.filter((a: any) => a.isActive))
+                if (Array.isArray(labelsData)) setAllLabels(labelsData)
+                if (convLabelsData && typeof convLabelsData === 'object' && !convLabelsData.error) {
+                    setChatLabelsMap(convLabelsData)
+                }
+            } catch (err) {
+                console.error("Failed to load CRM data:", err)
+            }
+        }
+        fetchInitialData()
     }, [])
 
     // Realtime Incoming Messages
@@ -310,6 +320,22 @@ export default function ChatPage() {
                 const { remoteJid } = payload
                 if (selectedChatRef.current?.id === remoteJid) {
                     setMessages([])
+                }
+            })
+            .on('broadcast', { event: 'labels_updated' }, ({ payload }) => {
+                const { conversationId, remoteJid } = payload
+                // Refresh the whole label map to keep sidebar labels in sync
+                fetch('/api/labels/conversations')
+                    .then(r => r.json())
+                    .then(data => { if (data && typeof data === 'object' && !data.error) setChatLabelsMap(data) })
+                    .catch(() => { })
+
+                // If currently viewing this conversation, refresh its header labels
+                if (selectedChatRef.current?.id === remoteJid) {
+                    fetch(`/api/labels/conversations?conversationId=${conversationId}`)
+                        .then(r => r.json())
+                        .then(data => { if (Array.isArray(data)) setConversationLabels(data) })
+                        .catch(() => { })
                 }
             })
             .subscribe()
@@ -556,9 +582,15 @@ export default function ChatPage() {
     const filteredChats = chats.filter((chat) => {
         const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             chat.phone.includes(searchQuery)
-        if (filter === "personal") return matchesSearch && !chat.isGroup
-        if (filter === "groups") return matchesSearch && chat.isGroup
-        return matchesSearch
+
+        const matchesType = filter === "all" ? true :
+            filter === "personal" ? !chat.isGroup :
+                chat.isGroup
+
+        const chatLabels = chatLabelsMap[chat.id] || []
+        const matchesLabel = !selectedLabelId || chatLabels.some(l => l.id === selectedLabelId)
+
+        return matchesSearch && matchesType && matchesLabel
     })
 
     const groupCount = chats.filter(c => c.isGroup).length
@@ -660,6 +692,42 @@ export default function ChatPage() {
                         <button onClick={() => setFilter("groups")} className={cn("flex-1 text-[11px] py-1.5 rounded-lg transition-all font-semibold", filter === "groups" ? "bg-white/10 text-white shadow-sm" : "text-white/50 hover:text-white/90 hover:bg-white/[0.04]")}>
                             Grupos ({groupCount})
                         </button>
+                    </div>
+
+                    {/* Label Quick Filters */}
+                    <div className="flex gap-2 mt-3 overflow-x-auto pb-1 no-scrollbar">
+                        <button
+                            onClick={() => setSelectedLabelId(null)}
+                            className={cn(
+                                "whitespace-nowrap px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all",
+                                !selectedLabelId
+                                    ? "bg-white/20 text-white shadow-sm ring-1 ring-white/20"
+                                    : "bg-white/5 text-white/40 hover:text-white/60 hover:bg-white/10"
+                            )}
+                        >
+                            Todas
+                        </button>
+                        {allLabels.map(label => (
+                            <button
+                                key={label.id}
+                                onClick={() => setSelectedLabelId(selectedLabelId === label.id ? null : label.id)}
+                                className={cn(
+                                    "whitespace-nowrap px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5",
+                                    selectedLabelId === label.id
+                                        ? "ring-1 shadow-sm"
+                                        : "bg-white/5 text-white/40 hover:text-white/60 hover:bg-white/10"
+                                )}
+                                style={selectedLabelId === label.id ? {
+                                    backgroundColor: `${label.color}20`,
+                                    borderColor: `${label.color}40`,
+                                    color: label.color,
+                                    boxShadow: `0 0 10px ${label.color}15`
+                                } : {}}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: label.color }} />
+                                {label.name}
+                            </button>
+                        ))}
                     </div>
                 </div>
 

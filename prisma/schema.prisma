@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "rhel-openssl-1.0.x", "darwin-arm64"]
 }
 
@@ -8,193 +8,162 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===== NexCRM Schema =====
-
 model Account {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String?
-  language  String   @default("pt-BR")
-  plan      String   @default("free")
-  autoResolvedays Int @default(30)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users         User[]
-  contacts      Contact[]
-  conversations Conversation[]
-  labels        Label[]
-  teams         Team[]
-  agents        Agent[]
+  id              String         @id @default(cuid())
+  name            String
+  phone           String?
+  language        String         @default("pt-BR")
+  plan            String         @default("free")
+  autoResolvedays Int            @default(30)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  agents          Agent[]
+  contacts        Contact[]
+  conversations   Conversation[]
+  labels          Label[]
+  teams           Team[]
+  users           User[]
 }
 
 model User {
-  id        String   @id @default(cuid())
-  authId    String   @unique // Supabase Auth ID
-  name      String
-  email     String   @unique
-  avatarUrl String?
-  role      Role     @default(AGENT)
-  status    UserStatus @default(OFFLINE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
+  id                    String         @id @default(cuid())
+  authId                String         @unique
+  name                  String
+  email                 String         @unique
+  avatarUrl             String?
+  role                  Role           @default(AGENT)
+  status                UserStatus     @default(OFFLINE)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  accountId             String
   assignedConversations Conversation[] @relation("assignee")
   messages              Message[]
   notifications         Notification[]
   teams                 TeamMember[]
+  account               Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model Contact {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   name             String?
   email            String?
   phone            String?
   avatarUrl        String?
-  customAttributes Json?    @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  conversations Conversation[]
-  labels        ContactLabel[]
+  customAttributes Json?          @default("{}")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  accountId        String
+  account          Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  labels           ContactLabel[]
+  conversations    Conversation[]
 }
 
 model Conversation {
-  id                  String             @id @default(cuid())
-  whatsappJid         String?            @unique
-  status              ConversationStatus @default(OPEN)
-  channel             Channel            @default(WEB)
-  unreadCount         Int                @default(0)
-  readOverrideUntil   DateTime?
-  lastReadMessageId   String?
-  aiEnabled           Boolean            @default(true)  // If false, AI will not auto-respond in this conversation
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-
-  accountId  String
-  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  contactId  String
-  contact    Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-
-  assigneeId String?
-  assignee   User?   @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-
-  agentId    String?
-  agent      Agent?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  messages   Message[]
-  labels     ConversationLabel[]
+  id                String              @id @default(cuid())
+  whatsappJid       String?             @unique
+  status            ConversationStatus  @default(OPEN)
+  channel           Channel             @default(WEB)
+  unreadCount       Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  accountId         String
+  contactId         String
+  assigneeId        String?
+  agentId           String?
+  lastReadMessageId String?
+  readOverrideUntil DateTime?
+  aiEnabled         Boolean             @default(true)
+  account           Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  agent             Agent?              @relation(fields: [agentId], references: [id])
+  assignee          User?               @relation("assignee", fields: [assigneeId], references: [id])
+  contact           Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  labels            ConversationLabel[]
+  messages          Message[]
 }
 
 model Message {
-  id           String      @id @default(cuid())
-  whatsappId   String?     @unique
-  whatsappJid  String?
-  content      String
-  type         String      @default("text") // text, image, video, audio, document, sticker
-  fromMe       Boolean     @default(false)
-  isRead       Boolean     @default(false)
-  sender       SenderType
-  senderName   String?
-  fileUrl      String?
-  fileName     String?
-  createdAt    DateTime    @default(now())
-
+  id             String       @id @default(cuid())
+  whatsappId     String?      @unique
+  whatsappJid    String?
+  content        String
+  type           String       @default("text")
+  fromMe         Boolean      @default(false)
+  isRead         Boolean      @default(false)
+  sender         SenderType
+  senderName     String?
+  fileUrl        String?
+  fileName       String?
+  createdAt      DateTime     @default(now())
   conversationId String
+  userId         String?
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  userId    String?
-  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user           User?        @relation(fields: [userId], references: [id])
 }
 
 model Agent {
-  id          String @id @default(cuid())
-  name        String
-  roleDescription String @db.Text @default("Agente de atendimento corporativo.")
-  
-  // Settings - Voice & Timing
-  voiceType   VoiceType @default(FEMALE)
-  messageGrouping Boolean @default(true)
-  groupingDelay Int @default(15) // seconds before reply
-  
-  // Settings - Behavior
-  humanHandoffRules String @db.Text @default("Redirecione para humano em caso de reclamação.")
-  timeBasedRouting Boolean @default(false)
-  
-  // Settings - Company Context
-  companyName String @default("Minha Empresa")
-  companyUrl  String?
-  companyDescription String? @db.Text
-  
-  // Settings - Personality
-  communicationStyle String @default("PROFESSIONAL") // Mapped from Enums later
-  
-  // AI System Params
-  prompt      String    @db.Text
-  flow        String    @default("QUALIFICATION")
-  
-  // Operational
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  conversations Conversation[]
-  knowledgeData AgentKnowledge[]
-  attributes AgentAttribute[]
+  id                 String           @id @default(cuid())
+  name               String
+  voiceType          VoiceType        @default(FEMALE)
+  prompt             String
+  flow               String           @default("QUALIFICATION")
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  accountId          String
+  communicationStyle String           @default("PROFESSIONAL")
+  companyDescription String?
+  companyName        String           @default("Minha Empresa")
+  companyUrl         String?
+  groupingDelay      Int              @default(15)
+  humanHandoffRules  String           @default("Redirecione para humano em caso de reclamação.")
+  messageGrouping    Boolean          @default(true)
+  roleDescription    String           @default("Agente de atendimento corporativo.")
+  timeBasedRouting   Boolean          @default(false)
+  account            Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  attributes         AgentAttribute[]
+  knowledgeData      AgentKnowledge[]
+  conversations      Conversation[]
 }
 
 model AgentKnowledge {
   id        String   @id @default(cuid())
-  tagName   String   // e.g "Postura do Agente", "Tabela de Preços"
-  content   String   @db.Text
+  tagName   String
+  content   String
   agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model AgentAttribute {
-  id        String   @id @default(cuid())
-  fieldType String   // e.g "NOME", "CPF", "ENDERECO", "TELEFONE"
-  description String @db.Text
-  isRequired Boolean @default(false)
-  
-  agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  fieldType   String
+  description String
+  isRequired  Boolean  @default(false)
+  agentId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model Label {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  color       String  @default("#3B82F6")
-  createdAt   DateTime @default(now())
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
+  id            String              @id @default(cuid())
+  name          String
+  description   String?
+  color         String              @default("#3B82F6")
+  createdAt     DateTime            @default(now())
+  accountId     String
   contacts      ContactLabel[]
   conversations ConversationLabel[]
+  account       Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, name])
 }
 
 model ContactLabel {
   contactId String
-  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   labelId   String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   label     Label   @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@id([contactId, labelId])
@@ -202,30 +171,28 @@ model ContactLabel {
 
 model ConversationLabel {
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   labelId        String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   label          Label        @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@id([conversationId, labelId])
 }
 
 model Team {
-  id          String  @id @default(cuid())
+  id          String       @id @default(cuid())
   name        String
   description String?
-  createdAt   DateTime @default(now())
-
-  accountId String
-  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-
-  members   TeamMember[]
+  createdAt   DateTime     @default(now())
+  accountId   String
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  members     TeamMember[]
 }
 
 model TeamMember {
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   teamId String
-  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, teamId])
 }
@@ -237,9 +204,8 @@ model Notification {
   message   String
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model WhatsappEventRaw {
@@ -255,8 +221,6 @@ model WhatsappEventRaw {
 
   @@index([processed, receivedAt(sort: Desc)])
 }
-
-// ===== Enums =====
 
 enum Role {
   ADMIN

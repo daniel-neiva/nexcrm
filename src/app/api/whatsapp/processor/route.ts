@@ -349,11 +349,90 @@ export async function POST(request: NextRequest) {
                             console.log(`[Processor] Agent "${activeAgent.name}" responding to ${_remoteJid}`)
 
                             // Call orchestrator: build full system prompt, call gpt-4o-mini, save AI message to DB
-                            const { content: aiResponse } = await processAgentMessage(
+                            const { content: aiResponse, suggestedLabel } = await processAgentMessage(
                                 activeAgent.id,
                                 _conversationId,
                                 _content
                             )
+
+                            // ── AUTO-LABELING PHASE ─────────────────────────────────────
+                            if (suggestedLabel) {
+                                console.log(`[Processor] AI suggested label: "${suggestedLabel}" for conversation ${_conversationId}`)
+
+                                const label = await prisma.label.findFirst({
+                                    where: { name: suggestedLabel, accountId: _accountId }
+                                })
+
+                                if (label) {
+                                    // Smart Switching: Define what we consider "Lead Stages"
+                                    // If we are applying one of these, we should remove the others
+                                    const stageLabels = [
+                                        "Novo Lead", "Em Atendimento", "Agendado",
+                                        "Fechado", "Perdido", "Lead Qualificado",
+                                        "Lead Desqualificado", "Aguardando Resposta"
+                                    ]
+
+                                    const isStageLabel = stageLabels.includes(label.name)
+
+                                    if (isStageLabel) {
+                                        // Find all other stage labels currently applied to this conversation
+                                        const otherStages = await prisma.label.findMany({
+                                            where: {
+                                                accountId: _accountId,
+                                                name: { in: stageLabels, not: label.name }
+                                            },
+                                            select: { id: true }
+                                        })
+                                        const otherStageIds = otherStages.map(s => s.id)
+
+                                        if (otherStageIds.length > 0) {
+                                            // Remove them from Conversation and Contact
+                                            await prisma.conversationLabel.deleteMany({
+                                                where: { conversationId: _conversationId, labelId: { in: otherStageIds } }
+                                            })
+
+                                            const conv = await prisma.conversation.findUnique({
+                                                where: { id: _conversationId },
+                                                select: { contactId: true }
+                                            })
+                                            if (conv?.contactId) {
+                                                await prisma.contactLabel.deleteMany({
+                                                    where: { contactId: conv.contactId, labelId: { in: otherStageIds } }
+                                                })
+                                            }
+                                        }
+                                    }
+
+                                    // Apply the new label to Conversation
+                                    await prisma.conversationLabel.upsert({
+                                        where: { conversationId_labelId: { conversationId: _conversationId, labelId: label.id } },
+                                        create: { conversationId: _conversationId, labelId: label.id },
+                                        update: {}
+                                    })
+
+                                    // Apply the new label to Contact
+                                    const conv = await prisma.conversation.findUnique({
+                                        where: { id: _conversationId },
+                                        select: { contactId: true }
+                                    })
+                                    if (conv?.contactId) {
+                                        await prisma.contactLabel.upsert({
+                                            where: { contactId_labelId: { contactId: conv.contactId, labelId: label.id } },
+                                            create: { contactId: conv.contactId, labelId: label.id },
+                                            update: {}
+                                        })
+                                    }
+
+                                    // Notify CRM UI that labels changed
+                                    await supabaseAdmin.channel('whatsapp_updates').send({
+                                        type: 'broadcast',
+                                        event: 'labels_updated',
+                                        payload: { conversationId: _conversationId, remoteJid: _remoteJid }
+                                    })
+
+                                    console.log(`[Processor] Auto-labeled ${_remoteJid} as "${suggestedLabel}" (Smart Switched)`)
+                                }
+                            }
 
                             // Send response via Evolution API (WhatsApp)
                             await sendTextMessage(_remoteJid, aiResponse)

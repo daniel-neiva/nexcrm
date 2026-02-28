@@ -32,7 +32,13 @@ export async function processAgentMessage(agentId: string, conversationId: strin
             content: msg.content,
         }))
 
-        // 3. Build System Prompt
+        // 3. Fetch all available labels for the account to use as classification context
+        const labels = await prisma.label.findMany({
+            where: { accountId: agent.accountId },
+            select: { id: true, name: true, description: true }
+        })
+
+        // 4. Build System Prompt
         let systemPrompt = `Você é ${agent.name}, um assistente inteligente da empresa ${agent.companyName}.
         
         Sua Função: ${agent.roleDescription}
@@ -46,6 +52,15 @@ export async function processAgentMessage(agentId: string, conversationId: strin
         REGRAS DE TRANSBORDO HUMANO:
         ${agent.humanHandoffRules}
         
+        ETIQUETAS DE CRM (ESTÁGIOS DO LEAD):
+        Você deve analisar o estágio do lead e sugerir a etiqueta MAIS ADEQUADA se houver uma mudança de status.
+        Etiquetas disponíveis:
+        ${labels.map(l => `- "${l.name}": ${l.description || "Sem descrição"}`).join('\n')}
+
+        REGRA DE ETIQUETAGEM:
+        Se você identificar que o lead mudou de estágio, adicione EXATAMENTE este formato ao FINAL da sua resposta: <suggested_label>NOME_DA_ETIQUETA</suggested_label>
+        Substitua NOME_DA_ETIQUETA pelo nome exato de uma das etiquetas acima. Se não houver mudança clara, não adicione nada.
+
         CONHECIMENTO COMPLEMENTAR:`
 
         agent.knowledgeData.forEach((k) => {
@@ -63,10 +78,9 @@ export async function processAgentMessage(agentId: string, conversationId: strin
         - Responda em Português do Brasil.
         - Seja conciso e direto ao ponto.
         - Se for um fluxo de QUALIFICAÇÃO, foque em coletar os atributos listados.
-        - Se for um fluxo de AGENDAMENTO, tente direcionar para um horário.
         - Se o cliente pedir para falar com um humano, siga as REGRAS DE TRANSBORDO.`
 
-        // 4. Call OpenAI (gpt-4o-mini: ~5x faster, same quality for conversational responses)
+        // 5. Call OpenAI
         const openai = getOpenAI()
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -79,23 +93,33 @@ export async function processAgentMessage(agentId: string, conversationId: strin
             max_tokens: 800,
         })
 
-        const aiResponse = completion.choices[0]?.message?.content || "Desculpe, não consegui processar sua solicitação."
+        let rawResponse = completion.choices[0]?.message?.content || "Desculpe, não consegui processar sua solicitação."
 
-        // 5. Save AI Message to DB
+        // 6. Extract suggested label if present
+        let suggestedLabel = null
+        const labelMatch = rawResponse.match(/<suggested_label>(.*?)<\/suggested_label>/)
+        if (labelMatch) {
+            suggestedLabel = labelMatch[1].trim()
+            // Clean the label tag from the message sent to the user
+            rawResponse = rawResponse.replace(/<suggested_label>.*?<\/suggested_label>/g, "").trim()
+        }
+
+        // 7. Save AI Message to DB
         const savedMessage = await prisma.message.create({
             data: {
-                content: aiResponse,
+                content: rawResponse,
                 sender: "AI_AGENT",
                 conversationId,
                 type: "text",
                 fromMe: true,
-                isRead: true, // Assistant messages are read by default
+                isRead: true,
             }
         })
 
         return {
-            content: aiResponse,
+            content: rawResponse,
             messageId: savedMessage.id,
+            suggestedLabel: suggestedLabel
         }
 
     } catch (error) {
