@@ -5,15 +5,17 @@ import { createClient } from '@/lib/supabase/server'
 // GET labels for a conversation
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+        const { id: conversationId } = await params
+
         const labels = await prisma.conversationLabel.findMany({
-            where: { conversationId: params.id },
+            where: { conversationId },
             include: { label: true }
         })
 
@@ -27,21 +29,19 @@ export async function GET(
 // POST add a label to a conversation
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+        const { id: conversationId } = await params
         const { labelId } = await req.json()
         if (!labelId) return NextResponse.json({ error: 'labelId is required' }, { status: 400 })
 
         await prisma.conversationLabel.create({
-            data: {
-                conversationId: params.id,
-                labelId
-            }
+            data: { conversationId, labelId }
         })
 
         const label = await prisma.label.findUnique({ where: { id: labelId } })
@@ -58,22 +58,20 @@ export async function POST(
 // DELETE remove a label from a conversation
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+        const { id: conversationId } = await params
         const { labelId } = await req.json()
         if (!labelId) return NextResponse.json({ error: 'labelId is required' }, { status: 400 })
 
         await prisma.conversationLabel.delete({
             where: {
-                conversationId_labelId: {
-                    conversationId: params.id,
-                    labelId
-                }
+                conversationId_labelId: { conversationId, labelId }
             }
         })
 

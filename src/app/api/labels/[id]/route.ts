@@ -5,17 +5,18 @@ import { createClient } from '@/lib/supabase/server'
 // PATCH update a label
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+        const { id: labelId } = await params
         const { name, color, description } = await req.json()
 
         const updated = await prisma.label.update({
-            where: { id: params.id },
+            where: { id: labelId },
             data: { name, color, description }
         })
 
@@ -29,18 +30,20 @@ export async function PATCH(
 // DELETE a label
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-        // Delete junction records first
-        await prisma.conversationLabel.deleteMany({ where: { labelId: params.id } })
-        await prisma.contactLabel.deleteMany({ where: { labelId: params.id } })
+        const { id: labelId } = await params
 
-        await prisma.label.delete({ where: { id: params.id } })
+        // Delete junction records first (cascade should handle this, but being explicit)
+        await prisma.conversationLabel.deleteMany({ where: { labelId } })
+        await prisma.contactLabel.deleteMany({ where: { labelId } })
+
+        await prisma.label.delete({ where: { id: labelId } })
 
         return NextResponse.json({ success: true })
     } catch (error) {
