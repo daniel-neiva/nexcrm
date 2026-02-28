@@ -258,157 +258,67 @@ export async function GET(request: NextRequest) {
                     return NextResponse.json({ error: 'jid is required' }, { status: 400 })
                 }
 
-                // Fetch messages and contacts in parallel for name resolution
-                const [rawResult, contacts, lidMap] = await Promise.all([
-                    getMessages(remoteJid, 80, instanceName),
-                    getContacts(instanceName).catch(() => []),
-                    loadLidMap().catch(() => ({} as Record<string, string>)),
-                ])
+                // 1. Find the conversation in our database to get its ID
+                const conversation = await prisma.conversation.findFirst({
+                    where: {
+                        whatsappJid: remoteJid,
+                        inboxId: inbox.id
+                    }
+                })
 
-                // Build contact name map for sender resolution in groups
+                if (!conversation) {
+                    // No local conversation means no messages yet
+                    return NextResponse.json([])
+                }
+
+                // 2. Fetch messages from our database
+                const dbMessages = await prisma.message.findMany({
+                    where: { conversationId: conversation.id },
+                    orderBy: { createdAt: 'asc' }
+                })
+
+                // 3. Fetch contacts for name resolution (especially for groups)
+                const dbContacts = await prisma.contact.findMany({
+                    where: { accountId: inbox.accountId },
+                    select: { phone: true, name: true, avatarUrl: true }
+                })
+
                 const contactNameMap = new Map<string, string>()
                 const contactPicMap = new Map<string, string>()
-                if (Array.isArray(contacts)) {
-                    for (const c of contacts) {
-                        if (c.remoteJid && c.pushName) {
-                            contactNameMap.set(c.remoteJid, c.pushName)
-                        }
-                        if (c.remoteJid && c.profilePictureUrl) {
-                            contactPicMap.set(c.remoteJid, c.profilePictureUrl)
-                        }
+                for (const c of dbContacts) {
+                    if (c.phone) {
+                        if (c.name) contactNameMap.set(c.phone, c.name)
+                        if (c.avatarUrl) contactPicMap.set(c.phone, c.avatarUrl)
                     }
                 }
 
-                let rawMessages: Array<Record<string, unknown>> = []
-                if (Array.isArray(rawResult)) {
-                    rawMessages = rawResult
-                } else if (rawResult && typeof rawResult === 'object') {
-                    const obj = rawResult as Record<string, unknown>
-                    if (obj.messages && typeof obj.messages === 'object') {
-                        const msgs = obj.messages as Record<string, unknown>
-                        rawMessages = Array.isArray(msgs.records) ? msgs.records : []
+                // 4. Map DB messages to the frontend expected format
+                const formattedMessages = dbMessages.map(msg => {
+                    let senderName = msg.senderName || null;
+                    let senderProfilePicUrl = null;
+
+                    if (!msg.fromMe && msg.whatsappJid) {
+                        const lookupPhone = msg.whatsappJid.split('@')[0].replace('+', '');
+                        senderName = msg.senderName || contactNameMap.get(lookupPhone) || formatBrazilPhone(lookupPhone);
+                        senderProfilePicUrl = contactPicMap.get(lookupPhone) || null;
                     }
-                }
 
-                const messages = rawMessages
-                    .filter(msg => msg.key && msg.message)
-                    .map((msg) => {
-                        const key = msg.key as { id: string; fromMe: boolean; remoteJid: string; participant?: string }
-                        const message = msg.message as Record<string, unknown>
+                    return {
+                        id: msg.id,
+                        content: msg.content || '',
+                        type: msg.type,
+                        mimetype: msg.type === 'image' ? 'image/jpeg' : (msg.type === 'video' ? 'video/mp4' : (msg.type === 'audio' ? 'audio/ogg' : '')),
+                        fromMe: msg.fromMe,
+                        remoteJid: remoteJid, // Send back the requested JID context
+                        timestamp: msg.createdAt ? msg.createdAt.toISOString() : null,
+                        senderName,
+                        senderProfilePicUrl,
+                        hasMedia: ['image', 'audio', 'video', 'document', 'sticker'].includes(msg.type),
+                        isRead: msg.isRead || msg.fromMe,
+                    }
+                });
 
-                        // Extract text content
-                        let content = Object.values(message || {}).length === 0 ? '' : (
-                            (message?.conversation as string) ||
-                            ((message?.extendedTextMessage as Record<string, unknown>)?.text as string) ||
-                            ((message?.imageMessage as Record<string, unknown>)?.caption as string) ||
-                            ((message?.videoMessage as Record<string, unknown>)?.caption as string) ||
-                            ((message?.documentWithCaptionMessage as any)?.message?.documentMessage?.caption as string) ||
-                            ((message?.documentMessage as Record<string, unknown>)?.fileName as string) ||
-                            ((message?.buttonsResponseMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
-                            ((message?.listResponseMessage as Record<string, unknown>)?.title as string) ||
-                            ((message?.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
-                            ((message?.templateMessage as any)?.interactiveMessageTemplate?.body?.text as string) ||
-                            ((message?.templateMessage as any)?.hydratedTemplate?.bodyText as string) ||
-                            ((message?.templateMessage as any)?.hydratedTemplate?.hydratedContentText as string) ||
-                            ((message?.templateMessage as any)?.hydratedFourRowTemplate?.hydratedContentText as string) ||
-                            ((message?.interactiveMessage as any)?.body?.text as string) ||
-                            ((message?.interactiveMessage as any)?.header?.title as string) ||
-                            ((message?.buttonsMessage as any)?.contentText as string) ||
-                            ((message?.listMessage as any)?.description as string) ||
-                            ((message?.listMessage as any)?.title as string) ||
-                            ((message?.viewOnceMessage as any)?.message?.imageMessage?.caption as string) ||
-                            ((message?.viewOnceMessage as any)?.message?.videoMessage?.caption as string) ||
-                            ((message?.viewOnceMessageV2 as any)?.message?.imageMessage?.caption as string) ||
-                            ((message?.viewOnceMessageV2 as any)?.message?.videoMessage?.caption as string) ||
-                            ''
-                        )
-
-                        // Determine media type
-                        let type = 'text'
-                        let mimetype = ''
-                        let hasMedia = false
-
-                        const imgNode = message?.imageMessage || (message?.viewOnceMessage as any)?.message?.imageMessage || (message?.viewOnceMessageV2 as any)?.message?.imageMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.imageMessage || (message?.templateMessage as any)?.hydratedTemplate?.imageMessage
-                        const vidNode = message?.videoMessage || (message?.viewOnceMessage as any)?.message?.videoMessage || (message?.viewOnceMessageV2 as any)?.message?.videoMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.videoMessage || (message?.templateMessage as any)?.hydratedTemplate?.videoMessage
-                        const docNode = message?.documentMessage || (message?.documentWithCaptionMessage as any)?.message?.documentMessage || (message?.templateMessage as any)?.interactiveMessageTemplate?.header?.documentMessage || (message?.templateMessage as any)?.hydratedTemplate?.documentMessage
-
-                        if (imgNode) {
-                            type = 'image'
-                            hasMedia = true
-                            mimetype = (imgNode as any)?.mimetype || 'image/jpeg'
-                        } else if (message?.audioMessage) {
-                            type = 'audio'
-                            hasMedia = true
-                            mimetype = ((message.audioMessage as Record<string, unknown>)?.mimetype as string) || 'audio/ogg'
-                        } else if (vidNode) {
-                            type = 'video'
-                            hasMedia = true
-                            mimetype = (vidNode as any)?.mimetype || 'video/mp4'
-                        } else if (docNode) {
-                            type = 'document'
-                            hasMedia = true
-                            mimetype = (docNode as any)?.mimetype || 'application/pdf'
-                        } else if (message?.stickerMessage) {
-                            type = 'sticker'
-                            hasMedia = true
-                            mimetype = 'image/webp'
-                        }
-
-                        // If no text, and no standard media is identified, skip or save generic
-                        if (!content && !hasMedia) {
-                            content = 'Mensagem de sistema ou mídia não suportada'
-                        }
-
-                        // Resolve sender name: participant remoteJid -> contact name -> pushName
-                        let senderName = (msg.pushName as string) || null
-                        const participant = key.participant || (msg.participant as string)
-                        if (participant && contactNameMap.has(participant)) {
-                            senderName = contactNameMap.get(participant)!
-                        } else if (participant && !senderName) {
-                            const pPhone = formatPhoneNumber(participant)
-                            const isLid = isLidJid(participant)
-                            let resolvedPhone = isLid ? (lidMap[pPhone] || null) : null
-
-                            if (isLid && !resolvedPhone) {
-                                const k = key as any
-                                const remoteJidAlt = k.remoteJidAlt as string | undefined
-                                const participantAlt = k.participantAlt as string | undefined
-                                if (remoteJidAlt && remoteJidAlt.includes('@s.whatsapp.net')) {
-                                    resolvedPhone = remoteJidAlt.split('@')[0]
-                                } else if (participantAlt && participantAlt.includes('@s.whatsapp.net')) {
-                                    resolvedPhone = participantAlt.split('@')[0]
-                                }
-                            }
-
-                            if (isLid && !resolvedPhone) {
-                                senderName = `Anônimo (LID)`
-                            } else {
-                                senderName = formatBrazilPhone(resolvedPhone || pPhone)
-                            }
-                        }
-
-                        return {
-                            id: key.id,
-                            content,
-                            type,
-                            mimetype,
-                            fromMe: key.fromMe,
-                            remoteJid: key.remoteJid,
-                            timestamp: msg.messageTimestamp
-                                ? new Date((msg.messageTimestamp as number) * 1000).toISOString()
-                                : null,
-                            senderName,
-                            senderProfilePicUrl: participant ? contactPicMap.get(participant) : null,
-                            hasMedia: ['image', 'audio', 'video', 'document'].includes(type),
-                            isRead: msg.status === 'READ' || msg.status === 4 || key.fromMe === false, // Incoming are read by us, outgoing check status
-                        }
-                    })
-                    .sort((a, b) => {
-                        if (!a.timestamp || !b.timestamp) return 0
-                        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                    })
-
-                return NextResponse.json(messages)
+                return NextResponse.json(formattedMessages)
             }
 
             default:
