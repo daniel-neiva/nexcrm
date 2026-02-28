@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
                     getContacts().catch(() => []),
                     loadLidMap().catch(() => ({})),
                     prisma.conversation.findMany({ select: { whatsappJid: true, unreadCount: true, readOverrideUntil: true } }).catch(() => []),
-                    prisma.contact.findMany({ select: { phone: true, avatarUrl: true } }).catch(() => [])
+                    prisma.contact.findMany({ select: { phone: true, name: true, avatarUrl: true } }).catch(() => [])
                 ])
 
                 const dbUnreadMap = new Map<string, number>()
@@ -53,8 +53,10 @@ export async function GET(request: NextRequest) {
                 }
 
                 const dbAvatarMap = new Map<string, string>()
+                const dbNameMap = new Map<string, string>()
                 for (const c of dbContacts) {
                     if (c.phone && c.avatarUrl) dbAvatarMap.set(c.phone, c.avatarUrl)
+                    if (c.phone && c.name) dbNameMap.set(c.phone, c.name)
                 }
 
                 // Build name maps from contacts and groups
@@ -115,11 +117,16 @@ export async function GET(request: NextRequest) {
                             }
                         }
 
-                        // Resolve name: LID resolved contact > contacts DB > lastMessage pushName > phone
+                        // Resolve name: DB saved name > LID resolved contact > contacts DB > lastMessage pushName > phone
                         let name = resolvedPhone || phone
                         const lookupJid = resolvedPhone ? `${resolvedPhone}@s.whatsapp.net` : remoteJid
+                        const lookupPhone = resolvedPhone || phone
+
                         if (isGroup) {
                             name = groupNameMap.get(remoteJid) || `Grupo ${phone}`
+                        } else if (dbNameMap.has(lookupPhone)) {
+                            // Highest priority: name saved in our database
+                            name = dbNameMap.get(lookupPhone)!
                         } else if (contactNameMap.has(lookupJid)) {
                             name = contactNameMap.get(lookupJid)!
                         } else if (contactNameMap.has(remoteJid)) {
