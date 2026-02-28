@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Search, Send, Paperclip, Smile, Phone, Video, Bot, MoreVertical, Loader2, MessageSquare, Users, Download, Play, FileText, X, Trash2 } from "lucide-react"
+import { Search, Send, Paperclip, Smile, Phone, Video, Bot, MoreVertical, Loader2, MessageSquare, Users, Download, Play, FileText, X, Trash2, Tag, Plus, ChevronDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -201,13 +201,24 @@ export default function ChatPage() {
     const [aiEnabled, setAiEnabled] = useState(true)
     const [assigningAgent, setAssigningAgent] = useState(false)
 
+    // Labels state
+    const [allLabels, setAllLabels] = useState<{ id: string; name: string; color: string }[]>([])
+    const [conversationLabels, setConversationLabels] = useState<{ id: string; name: string; color: string }[]>([])
+    const [showLabelDropdown, setShowLabelDropdown] = useState(false)
+    const [labelFilter, setLabelFilter] = useState<string | null>(null)
+    const [showLabelFilter, setShowLabelFilter] = useState(false)
+
     const supabase = createClient()
 
-    // Fetch available AI agents once
+    // Fetch available AI agents and labels once
     useEffect(() => {
         fetch('/api/agents')
             .then(r => r.json())
             .then(data => { if (Array.isArray(data)) setAgents(data.filter((a: any) => a.isActive)) })
+            .catch(() => { })
+        fetch('/api/labels')
+            .then(r => r.json())
+            .then(data => { if (Array.isArray(data)) setAllLabels(data) })
             .catch(() => { })
     }, [])
 
@@ -350,9 +361,9 @@ export default function ChatPage() {
         if (selectedChat) loadMessages(selectedChat)
     }, [selectedChat, loadMessages])
 
-    // Load conversation metadata (agent assignment) when chat changes
+    // Load conversation metadata (agent assignment + labels) when chat changes
     useEffect(() => {
-        if (!selectedChat) { setConversationId(null); setAssignedAgentId(null); return }
+        if (!selectedChat) { setConversationId(null); setAssignedAgentId(null); setConversationLabels([]); return }
         fetch(`/api/whatsapp?action=conversation&jid=${encodeURIComponent(selectedChat.id)}`, { cache: 'no-store' })
             .then(r => r.json())
             .then((data: any) => {
@@ -360,10 +371,44 @@ export default function ChatPage() {
                     setConversationId(data.id)
                     setAssignedAgentId(data.agentId || null)
                     setAiEnabled(data.aiEnabled ?? true)
+                    // Fetch labels for this conversation
+                    fetch(`/api/conversations/${data.id}/labels`, { cache: 'no-store' })
+                        .then(r => r.json())
+                        .then(labels => { if (Array.isArray(labels)) setConversationLabels(labels) })
+                        .catch(() => setConversationLabels([]))
                 }
             })
             .catch(() => { })
     }, [selectedChat?.id])
+
+    // Add label to conversation
+    const addLabelToConversation = async (labelId: string) => {
+        if (!conversationId) return
+        const label = allLabels.find(l => l.id === labelId)
+        if (!label || conversationLabels.some(l => l.id === labelId)) return
+        setConversationLabels(prev => [...prev, label])
+        setShowLabelDropdown(false)
+        try {
+            await fetch(`/api/conversations/${conversationId}/labels`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ labelId })
+            })
+        } catch { setConversationLabels(prev => prev.filter(l => l.id !== labelId)) }
+    }
+
+    // Remove label from conversation
+    const removeLabelFromConversation = async (labelId: string) => {
+        if (!conversationId) return
+        setConversationLabels(prev => prev.filter(l => l.id !== labelId))
+        try {
+            await fetch(`/api/conversations/${conversationId}/labels`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ labelId })
+            })
+        } catch { /* revert handled by next load */ }
+    }
 
     // Auto-scroll to bottom of messages only
     useEffect(() => {
@@ -515,6 +560,20 @@ export default function ChatPage() {
                                             </span>
                                         </div>
                                         <p className="text-xs text-white/50 truncate font-medium">{chat.lastMessage || chat.phoneFormatted || `+${chat.phone}`}</p>
+                                        {/* Label badges shown when this chat has labels (visible when selected) */}
+                                        {selectedChat?.id === chat.id && conversationLabels.length > 0 && (
+                                            <div className="flex gap-1 mt-1 flex-wrap">
+                                                {conversationLabels.slice(0, 3).map(label => (
+                                                    <span key={label.id} className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: `${label.color}20`, color: label.color }}>
+                                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: label.color }} />
+                                                        {label.name}
+                                                    </span>
+                                                ))}
+                                                {conversationLabels.length > 3 && (
+                                                    <span className="text-[9px] font-bold text-white/40">+{conversationLabels.length - 3}</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     {chat.unread > 0 && (
                                         <Badge className="text-[10px] px-1.5 py-0 h-5 min-w-5 flex items-center justify-center bg-blue-500 border border-blue-400/50 shadow-md shadow-blue-500/20 text-white shrink-0 rounded-full font-bold">
@@ -808,6 +867,63 @@ export default function ChatPage() {
                                     >
                                         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-300 ${aiEnabled ? 'translate-x-5' : ''}`} />
                                     </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Labels Section */}
+                        <div className="apple-glass-panel rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Etiquetas</p>
+                                <button
+                                    onClick={() => setShowLabelDropdown(!showLabelDropdown)}
+                                    className="p-1 rounded-lg hover:bg-white/10 transition-colors text-white/40 hover:text-white"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            {/* Applied Labels */}
+                            {conversationLabels.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5 mb-2">
+                                    {conversationLabels.map(label => (
+                                        <span
+                                            key={label.id}
+                                            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg group/label cursor-default transition-all hover:scale-105"
+                                            style={{ backgroundColor: `${label.color}20`, color: label.color, border: `1px solid ${label.color}30` }}
+                                        >
+                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: label.color }} />
+                                            {label.name}
+                                            <button
+                                                onClick={() => removeLabelFromConversation(label.id)}
+                                                className="ml-0.5 opacity-0 group-hover/label:opacity-100 transition-opacity hover:text-white"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-white/30 mb-2">Nenhuma etiqueta aplicada</p>
+                            )}
+
+                            {/* Add Label Dropdown */}
+                            {showLabelDropdown && (
+                                <div className="mt-2 p-2 rounded-xl bg-black/60 border border-white/10 backdrop-blur-xl shadow-2xl max-h-[200px] overflow-y-auto space-y-0.5">
+                                    {allLabels.filter(l => !conversationLabels.some(cl => cl.id === l.id)).length === 0 ? (
+                                        <p className="text-xs text-white/30 text-center py-2">Todas aplicadas</p>
+                                    ) : (
+                                        allLabels.filter(l => !conversationLabels.some(cl => cl.id === l.id)).map(label => (
+                                            <button
+                                                key={label.id}
+                                                onClick={() => addLabelToConversation(label.id)}
+                                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors text-left"
+                                            >
+                                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                                                <span className="text-xs font-semibold text-white/80">{label.name}</span>
+                                            </button>
+                                        ))
+                                    )}
                                 </div>
                             )}
                         </div>
