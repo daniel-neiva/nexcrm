@@ -207,10 +207,12 @@ export default function ChatPage() {
     const [showLabelDropdown, setShowLabelDropdown] = useState(false)
     const [labelFilter, setLabelFilter] = useState<string | null>(null)
     const [showLabelFilter, setShowLabelFilter] = useState(false)
+    // Map of all chat labels: { [whatsappJid]: [{ id, name, color }] }
+    const [chatLabelsMap, setChatLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({})
 
     const supabase = createClient()
 
-    // Fetch available AI agents and labels once
+    // Fetch available AI agents, labels, and all conversation labels on mount
     useEffect(() => {
         fetch('/api/agents')
             .then(r => r.json())
@@ -219,6 +221,10 @@ export default function ChatPage() {
         fetch('/api/labels')
             .then(r => r.json())
             .then(data => { if (Array.isArray(data)) setAllLabels(data) })
+            .catch(() => { })
+        fetch('/api/labels/conversations')
+            .then(r => r.json())
+            .then(data => { if (data && typeof data === 'object' && !data.error) setChatLabelsMap(data) })
             .catch(() => { })
     }, [])
 
@@ -389,10 +395,15 @@ export default function ChatPage() {
 
     // Add label to conversation
     const addLabelToConversation = async (labelId: string) => {
-        if (!conversationId) return
+        if (!conversationId || !selectedChat) return
         const label = allLabels.find(l => l.id === labelId)
         if (!label || conversationLabels.some(l => l.id === labelId)) return
         setConversationLabels(prev => [...prev, label])
+        // Also update the global map so the chat list badge updates immediately
+        setChatLabelsMap(prev => ({
+            ...prev,
+            [selectedChat.id]: [...(prev[selectedChat.id] || []), label]
+        }))
         setShowLabelDropdown(false)
         try {
             await fetch(`/api/conversations/${conversationId}/labels`, {
@@ -400,13 +411,24 @@ export default function ChatPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ labelId })
             })
-        } catch { setConversationLabels(prev => prev.filter(l => l.id !== labelId)) }
+        } catch {
+            setConversationLabels(prev => prev.filter(l => l.id !== labelId))
+            setChatLabelsMap(prev => ({
+                ...prev,
+                [selectedChat.id]: (prev[selectedChat.id] || []).filter(l => l.id !== labelId)
+            }))
+        }
     }
 
     // Remove label from conversation
     const removeLabelFromConversation = async (labelId: string) => {
-        if (!conversationId) return
+        if (!conversationId || !selectedChat) return
         setConversationLabels(prev => prev.filter(l => l.id !== labelId))
+        // Also update the global map
+        setChatLabelsMap(prev => ({
+            ...prev,
+            [selectedChat.id]: (prev[selectedChat.id] || []).filter(l => l.id !== labelId)
+        }))
         try {
             await fetch(`/api/conversations/${conversationId}/labels`, {
                 method: 'DELETE',
@@ -566,17 +588,17 @@ export default function ChatPage() {
                                             </span>
                                         </div>
                                         <p className="text-xs text-white/50 truncate font-medium">{chat.lastMessage || chat.phoneFormatted || `+${chat.phone}`}</p>
-                                        {/* Label badges shown when this chat has labels (visible when selected) */}
-                                        {selectedChat?.id === chat.id && conversationLabels.length > 0 && (
+                                        {/* Label badges — always visible for any chat that has labels */}
+                                        {(chatLabelsMap[chat.id] || []).length > 0 && (
                                             <div className="flex gap-1 mt-1 flex-wrap">
-                                                {conversationLabels.slice(0, 3).map(label => (
+                                                {(chatLabelsMap[chat.id] || []).slice(0, 3).map(label => (
                                                     <span key={label.id} className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: `${label.color}20`, color: label.color }}>
                                                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: label.color }} />
                                                         {label.name}
                                                     </span>
                                                 ))}
-                                                {conversationLabels.length > 3 && (
-                                                    <span className="text-[9px] font-bold text-white/40">+{conversationLabels.length - 3}</span>
+                                                {(chatLabelsMap[chat.id] || []).length > 3 && (
+                                                    <span className="text-[9px] font-bold text-white/40">+{(chatLabelsMap[chat.id] || []).length - 3}</span>
                                                 )}
                                             </div>
                                         )}
