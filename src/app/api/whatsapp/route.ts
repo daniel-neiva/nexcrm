@@ -64,8 +64,11 @@ export async function GET(request: NextRequest) {
 
                 const dbUnreadMap = new Map<string, number>()
                 const dbUnreadOverrides = new Map<string, boolean>()
+                // Create a Set of active tracked JIDs in our local DB
+                const activeTrackedJids = new Set<string>()
                 for (const conv of dbConversations) {
                     if (conv.whatsappJid) {
+                        activeTrackedJids.add(conv.whatsappJid)
                         dbUnreadMap.set(conv.whatsappJid, conv.unreadCount)
                         if (conv.readOverrideUntil && new Date(conv.readOverrideUntil) > new Date()) {
                             dbUnreadOverrides.set(conv.whatsappJid, true)
@@ -108,7 +111,14 @@ export async function GET(request: NextRequest) {
                 const lidMap = getAllLidMappings()
 
                 const allChats = (Array.isArray(rawChats) ? rawChats : [])
-                    .filter((chat) => isValidChat(chat.remoteJid as string))
+                    .filter((chat) => {
+                        const jid = chat.remoteJid as string;
+                        // First, it must be a valid format
+                        if (!isValidChat(jid)) return false;
+                        // CRITICAL: We only render chats that are actually tracked in our local DB for THIS inbox.
+                        // This prevents duplicates floating in Evolution API from showing up.
+                        return activeTrackedJids.has(jid);
+                    })
                     .map((chat) => {
                         const remoteJid = chat.remoteJid as string
                         const lastMessage = chat.lastMessage as Record<string, unknown> | undefined
