@@ -1,7 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Search, Send, Paperclip, Smile, Phone, Video, Bot, MoreVertical, Loader2, MessageSquare, Users, Download, Play, FileText, X, Trash2, Tag, Plus, ChevronDown } from "lucide-react"
+import {
+    Search, Phone, Loader2, Send, Bot, Trash2, ChevronDown, X,
+    Check, Volume2, Video, FileText, Play, Download, RotateCcw, Plus, MessageSquarePlus,
+    Users, MoreVertical, MessageSquare, Smile, Paperclip, Tag
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -193,6 +197,12 @@ export default function ChatPage() {
     const [filter, setFilter] = useState<"all" | "personal" | "groups">("all")
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+    // New conversation state
+    const [showNewChat, setShowNewChat] = useState(false)
+    const [newChatPhone, setNewChatPhone] = useState("")
+    const [newChatMessage, setNewChatMessage] = useState("")
+    const [sendingNewChat, setSendingNewChat] = useState(false)
 
     // Agent assignment state
     const [agents, setAgents] = useState<{ id: string; name: string; isActive: boolean }[]>([])
@@ -496,6 +506,40 @@ export default function ChatPage() {
         }
     }
 
+    // Start new conversation
+    async function handleStartNewChat() {
+        const phone = newChatPhone.replace(/\D/g, '')
+        if (!phone || phone.length < 10 || !newChatMessage.trim()) return
+
+        setSendingNewChat(true)
+        try {
+            const number = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`
+            await fetch('/api/whatsapp/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number, text: newChatMessage.trim() })
+            })
+
+            setShowNewChat(false)
+            setNewChatPhone('')
+            setNewChatMessage('')
+
+            // Refresh chat list after a short delay to let the message arrive
+            setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/whatsapp?action=chats', { cache: 'no-store' })
+                    const data = await res.json()
+                    if (Array.isArray(data)) setChats(data)
+                } catch { }
+            }, 1500)
+        } catch (err) {
+            console.error('Erro ao iniciar conversa:', err)
+            alert('Erro ao enviar mensagem. Verifique o número.')
+        } finally {
+            setSendingNewChat(false)
+        }
+    }
+
     // Filter chats
     const filteredChats = chats.filter((chat) => {
         const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -510,14 +554,79 @@ export default function ChatPage() {
 
     return (
         <div className="flex h-full overflow-hidden">
+            {/* New Conversation Modal */}
+            {showNewChat && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowNewChat(false)}>
+                    <div className="apple-glass-panel rounded-3xl p-6 w-full max-w-md shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <MessageSquarePlus className="w-5 h-5 text-blue-400" />
+                                Nova Conversa
+                            </h2>
+                            <button onClick={() => setShowNewChat(false)} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-white/50 uppercase tracking-widest">Número do WhatsApp</label>
+                                <div className="relative">
+                                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <Input
+                                        value={newChatPhone}
+                                        onChange={(e) => setNewChatPhone(e.target.value)}
+                                        placeholder="5511999998888"
+                                        className="pl-10 h-11 bg-white/5 border-white/10 rounded-xl text-sm"
+                                        autoFocus
+                                    />
+                                </div>
+                                <p className="text-[10px] text-white/30">Código do país + DDD + número (sem espaço ou traço)</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-white/50 uppercase tracking-widest">Mensagem Inicial</label>
+                                <textarea
+                                    value={newChatMessage}
+                                    onChange={(e) => setNewChatMessage(e.target.value)}
+                                    placeholder="Olá! Tudo bem?"
+                                    rows={3}
+                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => setShowNewChat(false)} className="px-4 py-2 text-sm text-white/50 hover:text-white transition-colors">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleStartNewChat}
+                                disabled={sendingNewChat || !newChatPhone.replace(/\D/g, '') || newChatPhone.replace(/\D/g, '').length < 10 || !newChatMessage.trim()}
+                                className="btn-primary px-6 py-2 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center gap-2"
+                            >
+                                {sendingNewChat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                Enviar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Conversation List */}
             <div className="w-[340px] apple-glass-heavy border-r border-white/10 flex flex-col h-full shrink-0 z-10 shadow-xl">
                 <div className="p-4 border-b border-white/[0.08]">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-bold tracking-tight text-white/90">WhatsApp</h2>
-                        <Badge className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-sm backdrop-blur-sm shadow-emerald-500/10 uppercase tracking-widest px-2">
-                            ● Conectado
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowNewChat(true)}
+                                className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 transition-all"
+                                title="Nova conversa"
+                            >
+                                <MessageSquarePlus className="w-4 h-4" />
+                            </button>
+                            <Badge className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-sm backdrop-blur-sm shadow-emerald-500/10 uppercase tracking-widest px-2">
+                                ● Conectado
+                            </Badge>
+                        </div>
                     </div>
                     <div className="relative mb-4">
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
