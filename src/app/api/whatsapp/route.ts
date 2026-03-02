@@ -315,6 +315,8 @@ export async function GET(request: NextRequest) {
                         senderProfilePicUrl,
                         hasMedia: ['image', 'audio', 'video', 'document', 'sticker'].includes(msg.type),
                         isRead: msg.isRead || msg.fromMe,
+                        fileUrl: (msg as any).fileUrl || null,
+                        fileName: (msg as any).fileName || null,
                     }
                 });
 

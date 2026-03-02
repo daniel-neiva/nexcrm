@@ -39,6 +39,8 @@ interface Message {
     senderName: string | null
     senderProfilePicUrl?: string | null
     hasMedia?: boolean
+    fileUrl?: string | null
+    fileName?: string | null
 }
 
 function formatTime(timestamp: string | null) {
@@ -73,7 +75,9 @@ function getInitials(name: string) {
 
 // ===== Media Component =====
 function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url: string) => void }) {
-    const [mediaUrl, setMediaUrl] = useState<string | null>(null)
+    // If we already have a stored fileUrl, use it directly without fetching from Evolution
+    const storedUrl = msg.fileUrl || null
+    const [mediaUrl, setMediaUrl] = useState<string | null>(storedUrl)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(false)
 
@@ -105,8 +109,8 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
 
     // Auto-load images
     useEffect(() => {
-        if (msg.type === "image") loadMedia()
-    }, [msg.type, loadMedia])
+        if (msg.type === "image" && !storedUrl) loadMedia()
+    }, [msg.type, loadMedia, storedUrl])
 
     if (error) {
         return <p className="text-xs opacity-50 italic">Mídia indisponível</p>
