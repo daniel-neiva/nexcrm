@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
                 instanceName,
                 token: `token-${instanceName}`,
                 qrcode: true,
+                integration: "WHATSAPP-BAILEYS",
                 webhook_events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'CHATS_UPDATE', 'CHATS_UPSERT']
             })
         })
