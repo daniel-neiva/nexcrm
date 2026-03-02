@@ -67,11 +67,25 @@ export async function GET(
         const qrRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${inbox.instanceName}`, {
             headers: { apikey: EVOLUTION_API_KEY }
         })
+
+        if (!qrRes.ok) {
+            const errText = await qrRes.text()
+            console.error(`[GET /connect] Evolution API rejected QR request for ${inbox.instanceName}:`, errText)
+            return NextResponse.json({ error: 'Failed to fetch QR Code from Evolution.' }, { status: 500 })
+        }
+
         const qrData = await qrRes.json()
+
+        let base64Image = qrData.base64 || qrData.qrcode?.base64 || qrData.code || '';
+
+        // Evolution sometimes returns raw base64 without the data:image prefix
+        if (base64Image && !base64Image.startsWith('data:image')) {
+            base64Image = `data:image/png;base64,${base64Image}`;
+        }
 
         return NextResponse.json({
             status: 'DISCONNECTED',
-            qrcode: qrData.base64 || qrData.qrcode?.base64 // Handle both direct and nested base64
+            qrcode: base64Image
         })
     } catch (error) {
         console.error('[GET /api/whatsapp/instances/[id]/connect]', error)
