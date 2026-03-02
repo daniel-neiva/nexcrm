@@ -100,9 +100,15 @@ export async function POST(req: NextRequest) {
             console.warn(`[API] Could not fetch initial status for ${instanceName}:`, e)
         }
 
-        // 4. Save Inbox in Database
-        const inbox = await prisma.inbox.create({
-            data: {
+        // 4. Save or Update Inbox in Database
+        const inbox = await prisma.inbox.upsert({
+            where: { instanceName },
+            update: {
+                name,
+                status: currentStatus,
+                accountId: dbUser.accountId
+            },
+            create: {
                 name,
                 instanceName,
                 accountId: dbUser.accountId,
