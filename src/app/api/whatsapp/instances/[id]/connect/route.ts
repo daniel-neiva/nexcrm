@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || ''
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || ''
 
@@ -24,7 +27,8 @@ export async function GET(
 
         // 1. Check connection status in Evolution
         const statusRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${inbox.instanceName}`, {
-            headers: { apikey: EVOLUTION_API_KEY }
+            headers: { apikey: EVOLUTION_API_KEY },
+            cache: 'no-store'
         })
         const statusData = await statusRes.json()
         const isConnected = statusData.instance?.state === 'open'
@@ -65,7 +69,8 @@ export async function GET(
 
         // 2. If disconnected, get QR Code
         const qrRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${inbox.instanceName}`, {
-            headers: { apikey: EVOLUTION_API_KEY }
+            headers: { apikey: EVOLUTION_API_KEY },
+            cache: 'no-store'
         })
 
         if (!qrRes.ok) {
