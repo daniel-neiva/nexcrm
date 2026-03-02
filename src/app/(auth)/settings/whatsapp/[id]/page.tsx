@@ -1,13 +1,17 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, AlertCircle, Smartphone, ShieldCheck, MessageSquare, ChevronLeft, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-export default function WhatsAppConnectPage({ params }: { params: { id: string } }) {
+
+export default function WhatsAppConnectPage({ params }: { params: Promise<{ id: string }> }) {
+    const unwrappedParams = React.use(params)
+    const { id } = unwrappedParams
+
     const [status, setStatus] = useState<'LOADING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('LOADING')
     const [qrcode, setQrcode] = useState<string | null>(null)
     const [inbox, setInbox] = useState<any>(null)
@@ -16,7 +20,7 @@ export default function WhatsAppConnectPage({ params }: { params: { id: string }
 
     const fetchStatus = useCallback(async () => {
         try {
-            const res = await fetch(`/api/whatsapp/instances/${params.id}/connect`)
+            const res = await fetch(`/api/whatsapp/instances/${id}/connect`)
             const data = await res.json()
 
             if (res.ok) {
@@ -34,18 +38,18 @@ export default function WhatsAppConnectPage({ params }: { params: { id: string }
             console.error("Mark as read error:", error)
             setStatus('ERROR')
         }
-    }, [params.id, router])
+    }, [id, router])
 
     useEffect(() => {
         const fetchInbox = async () => {
             const res = await fetch("/api/inboxes")
             const data = await res.json()
-            const found = data.find((i: any) => i.id === params.id)
+            const found = data.find((i: any) => i.id === id)
             setInbox(found)
         }
         fetchInbox()
         fetchStatus()
-    }, [params.id, fetchStatus])
+    }, [id, fetchStatus])
 
     // Poll for status while disconnected
     useEffect(() => {

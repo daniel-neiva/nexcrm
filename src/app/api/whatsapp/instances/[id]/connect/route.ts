@@ -11,9 +11,10 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || ''
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    props: { params: Promise<{ id: string }> }
 ) {
     try {
+        const params = await props.params
         const { id } = params
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -94,6 +95,9 @@ export async function GET(
         })
     } catch (error) {
         console.error('[GET /api/whatsapp/instances/[id]/connect]', error)
+        try {
+            require('fs').appendFileSync('api-crash.log', new Date().toISOString() + ' ERROR in connect/route.ts: ' + (error instanceof Error ? error.stack : String(error)) + '\n');
+        } catch (e) { }
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }
