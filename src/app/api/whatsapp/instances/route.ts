@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({
                 instanceName,
                 token: `token-${instanceName}`,
-                number: '',
                 qrcode: true,
                 webhook_events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'CHATS_UPDATE', 'CHATS_UPSERT']
             })
