@@ -42,6 +42,7 @@ export default function WhatsAppSettingsPage() {
     const [newName, setNewName] = useState("")
     const [newInstanceName, setNewInstanceName] = useState("")
     const [creating, setCreating] = useState(false)
+    const [deleting, setDeleting] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
     const router = useRouter()
@@ -105,6 +106,25 @@ export default function WhatsAppSettingsPage() {
             console.error("Erro na comunicação:", error)
         } finally {
             setCreating(false)
+        }
+    }
+
+    const handleDeleteInbox = async (id: string, name: string) => {
+        if (!confirm(`Tem certeza que deseja excluir a caixa "${name}"? Isso vai remover todas as conversas associadas.`)) return
+        setDeleting(id)
+        try {
+            const res = await fetch(`/api/whatsapp/instances/${id}`, { method: 'DELETE' })
+            if (res.ok) {
+                fetchInboxes()
+            } else {
+                const data = await res.json()
+                alert(data.error || 'Erro ao excluir caixa')
+            }
+        } catch (error) {
+            console.error('Erro ao excluir:', error)
+            alert('Erro ao comunicar com o servidor')
+        } finally {
+            setDeleting(null)
         }
     }
 
@@ -222,11 +242,22 @@ export default function WhatsAppSettingsPage() {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="apple-glass-panel border-white/10 text-white">
-                                            <DropdownMenuItem className="focus:bg-white/10 cursor-pointer">
-                                                <RefreshCw className="w-4 h-4 mr-2" /> Reiniciar Instância
+                                            <DropdownMenuItem
+                                                className="focus:bg-white/10 cursor-pointer"
+                                                onClick={() => router.push(`/settings/whatsapp/${inbox.id}`)}
+                                            >
+                                                <RefreshCw className="w-4 h-4 mr-2" /> Reconectar
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem className="focus:bg-white/10 text-red-400 focus:text-red-400 cursor-pointer">
-                                                <Trash2 className="w-4 h-4 mr-2" /> Excluir Caixa
+                                            <DropdownMenuItem
+                                                className="focus:bg-white/10 text-red-400 focus:text-red-400 cursor-pointer"
+                                                onClick={() => handleDeleteInbox(inbox.id, inbox.name)}
+                                                disabled={deleting === inbox.id}
+                                            >
+                                                {deleting === inbox.id
+                                                    ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                                    : <Trash2 className="w-4 h-4 mr-2" />
+                                                }
+                                                {deleting === inbox.id ? 'Excluindo...' : 'Excluir Caixa'}
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>

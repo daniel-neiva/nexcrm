@@ -282,7 +282,14 @@ export function Sidebar() {
                                                 <p className="text-[9px] text-white/40 truncate">{inbox.phoneNumber || inbox.instanceName}</p>
                                             </div>
                                         </div>
-                                        {inbox.status !== 'CONNECTED' && (
+                                        {inbox.status === 'CONNECTED' ? (
+                                            <Link
+                                                href={`/chat?inbox=${inbox.id}`}
+                                                className="mt-2 block w-full py-1.5 rounded-xl bg-white/5 text-[9px] font-bold text-white/50 text-center hover:bg-blue-500 hover:text-white transition-colors uppercase"
+                                            >
+                                                Ver Conversas
+                                            </Link>
+                                        ) : (
                                             <Link
                                                 href={`/settings/whatsapp/${inbox.id}`}
                                                 className="mt-2 block w-full py-1.5 rounded-xl bg-blue-500 text-[9px] font-bold text-white text-center hover:bg-blue-600 transition-colors uppercase"

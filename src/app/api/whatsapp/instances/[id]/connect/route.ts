@@ -33,38 +33,22 @@ export async function GET(
         })
         const statusData = await statusRes.json()
         const isConnected = statusData.instance?.state === 'open'
+        const newStatus = isConnected ? 'CONNECTED' : 'DISCONNECTED'
 
-        // Update database status if changed
-        if (isConnected && inbox.status !== 'CONNECTED') {
+        // Update DB + broadcast if status changed
+        if (inbox.status !== newStatus) {
             await prisma.inbox.update({
                 where: { id: inbox.id },
-                data: { status: 'CONNECTED' }
+                data: { status: newStatus }
             })
-        } else if (!isConnected && inbox.status === 'CONNECTED') {
-            await prisma.inbox.update({
-                where: { id: inbox.id },
-                data: { status: 'DISCONNECTED' }
+            await supabaseAdmin.channel('whatsapp_updates').send({
+                type: 'broadcast',
+                event: 'inbox_status_updated',
+                payload: { inboxId: inbox.id, status: newStatus }
             })
         }
 
         if (isConnected) {
-            // Ensure DB is in sync
-            if (inbox.status !== 'CONNECTED') {
-                await prisma.inbox.update({
-                    where: { id: inbox.id },
-                    data: { status: 'CONNECTED' }
-                })
-
-                // Broadcast status update to clients
-                await supabaseAdmin.channel('sidebar_updates').send({
-                    type: 'broadcast',
-                    event: 'inbox_status_updated',
-                    payload: {
-                        inboxId: inbox.id,
-                        status: 'CONNECTED'
-                    }
-                })
-            }
             return NextResponse.json({ status: 'CONNECTED' })
         }
 
