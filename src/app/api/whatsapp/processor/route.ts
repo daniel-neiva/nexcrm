@@ -52,7 +52,12 @@ export async function POST(request: NextRequest) {
 
         const messages = Array.isArray(data) ? data : (data.messages || [data])
 
-        for (const msg of messages) {
+        for (let msg of messages) {
+            // Un-nest "message" property if Evolution API wrapped it twice (e.g., data.message.key instead of data.key)
+            if (msg.message && msg.message.key && !msg.key) {
+                msg = msg.message;
+            }
+
             const key = msg.key || {}
             const remoteJid: string = key.remoteJid || msg.remoteJid || ''
             const senderPn: string = msg.senderPn || ''
@@ -60,7 +65,10 @@ export async function POST(request: NextRequest) {
             const pushName: string = msg.pushName || ''
             const fromMe: boolean = key.fromMe || false
 
-            if (!remoteJid || !messageId) continue
+            if (!remoteJid || !messageId) {
+                console.log('[Processor] Skipped message missing remoteJid or messageId:', JSON.stringify(msg).substring(0, 100));
+                continue;
+            }
 
             // LID mapping logic
             if (remoteJid.endsWith('@lid') && senderPn) {
