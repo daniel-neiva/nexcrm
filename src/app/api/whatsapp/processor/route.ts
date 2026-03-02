@@ -247,23 +247,26 @@ export async function POST(request: NextRequest) {
                     })
                 }
 
-                // Upsert Message
+                // Insert or Update Mapped Message
+                console.log(`[Processor] Upserting message ${messageId} into Conversation: ${conversation.id}`);
                 const savedMessage = await prisma.message.upsert({
-                    where: { whatsappId: messageId },
+                    where: { id: messageId },
                     create: {
+                        id: messageId,
                         whatsappId: messageId,
                         whatsappJid: remoteJid,
                         content,
                         type,
                         fromMe,
-                        sender: fromMe ? 'USER' : 'CONTACT',
+                        isRead: fromMe, // Sent messages are read by default
+                        sender: fromMe ? 'AGENT' : 'CONTACT',
                         senderName: pushName,
                         conversationId: conversation.id,
-                        inboxId: inbox.id,
-                        isRead: fromMe, // Sent messages are read by default
+                        inboxId: inbox.id // explicit inbox association
                     },
-                    update: {} // No update needed for now if it already exists
+                    update: {} // Immutable unless status updates
                 })
+                console.log(`[Processor] Successfully upserted message ${messageId}`);
 
                 // Mark incoming message as read in WhatsApp (shows blue ✓✓ to the lead)
                 if (!fromMe && messageId) {
@@ -681,6 +684,13 @@ export async function POST(request: NextRequest) {
                             }
                         })
                         console.log(`[Processor] Instance ${instanceName} connection status updated to ${newStatus}`)
+
+                        // Trigger history sync automatically when the inbox connects
+                        if (newStatus === 'CONNECTED') {
+                            import('@/lib/whatsappStatusSync').then(module => {
+                                module.syncInboxHistory(inbox.id, inbox.accountId, instanceName).catch(console.error);
+                            });
+                        }
                     }
                 }
             }

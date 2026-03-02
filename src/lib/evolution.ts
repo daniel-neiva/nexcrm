@@ -1,7 +1,7 @@
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || ''
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || ''
 
-async function evolutionFetch<T = unknown>(
+export async function evolutionFetch<T = unknown>(
     endpoint: string,
     options: RequestInit = {}
 ): Promise<T> {

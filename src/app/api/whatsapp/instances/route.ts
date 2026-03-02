@@ -110,6 +110,13 @@ export async function POST(req: NextRequest) {
             }
         })
 
+        // 5. Trigger an initial background sync if already connected
+        if (currentStatus === 'CONNECTED') {
+            import('@/lib/whatsappStatusSync').then(module => {
+                module.syncInboxHistory(inbox.id, dbUser.accountId, instanceName).catch(console.error);
+            });
+        }
+
         return NextResponse.json(inbox)
     } catch (error) {
         console.error('[POST /api/whatsapp/instances]', error)
