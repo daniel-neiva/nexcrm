@@ -9,8 +9,8 @@ export async function syncInboxHistory(inboxId: string, accountId: string, insta
         const chats = await evolutionFetch<any>(`/chat/findChats/${instanceName}`, { method: 'POST', body: JSON.stringify({}) });
         const records = Array.isArray(chats) ? chats : (chats?.records || []);
 
-        // Take top 50 active chats
-        const recentChats = records.filter((c: any) => c.remoteJid && c.remoteJid.includes('@')).slice(0, 50);
+        // Take top 500 active chats
+        const recentChats = records.filter((c: any) => c.remoteJid && c.remoteJid.includes('@')).slice(0, 500);
         console.log(`[AutoSync] Found ${recentChats.length} active chats to sync for ${instanceName}`);
 
         let totalUpserted = 0;
