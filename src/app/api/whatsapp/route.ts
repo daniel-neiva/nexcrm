@@ -339,15 +339,33 @@ async function formatConversationMessages(
         let senderProfilePicUrl: string | null = null
 
         if (!msg.fromMe) {
-            // For groups: use participantJid to resolve sender name
-            // For 1:1: use whatsappJid (the contact's JID)
+            // Priority: senderName (pushName) > contact DB lookup > formatted phone > "Participante"
             const lookupJid = msg.participantJid || msg.whatsappJid || null
-            if (lookupJid) {
-                const lookupPhone = extractPhoneFromJid(lookupJid)
-                if (lookupPhone) {
-                    senderName = msg.senderName || contactNameMap.get(lookupPhone) || contactNameMap.get(lookupJid) || formatBrazilPhone(lookupPhone)
-                    senderProfilePicUrl = contactPicMap.get(lookupPhone) || contactPicMap.get(lookupJid) || null
-                }
+            const lookupPhone = lookupJid ? extractPhoneFromJid(lookupJid) : null
+
+            // Try contact DB resolution
+            const contactName = lookupPhone
+                ? (contactNameMap.get(lookupPhone) || contactNameMap.get(lookupJid!) || null)
+                : (lookupJid ? contactNameMap.get(lookupJid) : null)
+
+            const contactPic = lookupPhone
+                ? (contactPicMap.get(lookupPhone) || contactPicMap.get(lookupJid!) || null)
+                : (lookupJid ? (contactPicMap.get(lookupJid) || null) : null)
+
+            senderProfilePicUrl = contactPic
+
+            if (msg.senderName && msg.senderName.trim().length > 0) {
+                // pushName exists — use it (best source for groups)
+                senderName = msg.senderName
+            } else if (contactName) {
+                // Resolved from contacts DB
+                senderName = contactName
+            } else if (lookupPhone && lookupPhone.length >= 10 && lookupPhone.length <= 15) {
+                // Valid phone number — format it nicely
+                senderName = formatBrazilPhone(lookupPhone)
+            } else {
+                // Unresolvable internal ID — show generic label
+                senderName = 'Participante'
             }
         }
 
