@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
-import { getProfilePicture, getChats, sendTextMessage, markAsRead } from '@/lib/evolution'
+import { getProfilePicture, getChats, sendTextMessage, markAsRead, normalizeJid, extractPhoneFromJid, isGroupJid } from '@/lib/evolution'
+import { persistAndSaveMedia } from '@/lib/media-storage'
 import { setLidPhone } from '@/lib/lid-map'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
@@ -59,26 +60,32 @@ export async function POST(request: NextRequest) {
             }
 
             const key = msg.key || {}
-            const remoteJid: string = key.remoteJid || msg.remoteJid || ''
+            const rawRemoteJid: string = key.remoteJid || msg.remoteJid || ''
             const senderPn: string = msg.senderPn || ''
             const messageId: string = key.id || msg.messageId || ''
             const pushName: string = msg.pushName || ''
             const fromMe: boolean = key.fromMe || false
 
+            // Normalize JID at entry point — single source of truth
+            const remoteJid = normalizeJid(rawRemoteJid, `processor/${instanceName}/${messageId}`)
             if (!remoteJid || !messageId) {
-                console.log('[Processor] Skipped message missing remoteJid or messageId:', JSON.stringify(msg).substring(0, 100));
+                console.log(`[Processor] Skipped: invalid JID "${rawRemoteJid}" or missing messageId. Instance: ${instanceName}`);
                 continue;
             }
+
+            // Normalize participant JID (sender within group chats)
+            const rawParticipant: string = key.participant || msg.participant || ''
+            const participantJid = normalizeJid(rawParticipant, `processor/${instanceName}/${messageId}/participant`) || null
+            const participantPhone = extractPhoneFromJid(participantJid) || null
 
             // LID mapping logic
             if (remoteJid.endsWith('@lid') && senderPn) {
                 const phone = senderPn.replace('@s.whatsapp.net', '').replace('@lid', '')
                 setLidPhone(remoteJid, phone)
             }
-            const participant: string = key.participant || msg.participant || ''
-            if (participant.endsWith('@lid') && senderPn) {
+            if (rawParticipant.endsWith('@lid') && senderPn) {
                 const phone = senderPn.replace('@s.whatsapp.net', '').replace('@lid', '')
-                setLidPhone(participant, phone)
+                setLidPhone(rawParticipant, phone)
             }
 
             // Sync to Database if it is a real message creation event
@@ -258,14 +265,41 @@ export async function POST(request: NextRequest) {
                         content,
                         type,
                         fromMe,
-                        isRead: fromMe, // Sent messages are read by default
+                        isRead: fromMe,
                         sender: fromMe ? 'AGENT' : 'CONTACT',
                         senderName: pushName,
+                        participantJid,
+                        participantPhone,
                         conversationId: conversation.id,
-                        inboxId: inbox.id // explicit inbox association
+                        inboxId: inbox.id
                     },
-                    update: {} // Immutable unless status updates
+                    update: {}
                 })
+
+                // Persist media to Supabase Storage (non-blocking via after())
+                if (hasMedia && messageId) {
+                    const _instanceName = instanceName
+                    const _messageId = messageId
+                    const _remoteJid = remoteJid
+                    const _fromMe = fromMe
+                    const _type = type
+                    const _fileName = (m?.documentMessage as any)?.fileName || null
+                    const _dbMsgId = savedMessage.id
+                    after(async () => {
+                        try {
+                            await persistAndSaveMedia(_dbMsgId, {
+                                instanceName: _instanceName,
+                                messageId: _messageId,
+                                remoteJid: _remoteJid,
+                                fromMe: _fromMe,
+                                mediaType: _type,
+                                fileName: _fileName,
+                            })
+                        } catch (e: any) {
+                            console.error(`[Processor] Media persist failed for ${_messageId}:`, e.message)
+                        }
+                    })
+                }
                 console.log(`[Processor] Successfully upserted message ${messageId}`);
 
                 // Mark incoming message as read in WhatsApp (shows blue ✓✓ to the lead)
@@ -332,7 +366,7 @@ export async function POST(request: NextRequest) {
 
                 // ===== AI AUTO-RESPONSE (with intelligent routing) =====
                 // Only trigger for incoming, non-group, text-based messages
-                const isGroup = remoteJid.includes('@g.us')
+                const isGroup = isGroupJid(remoteJid)
                 const isTextBased = type === 'text' && content.length > 0
 
                 if (!fromMe && !isGroup && isTextBased && conversation.aiEnabled) {

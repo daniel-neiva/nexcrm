@@ -175,15 +175,76 @@ export async function setWebhook(instanceName: string, webhookUrl: string) {
     })
 }
 
-// ===== Utility =====
+// ===== JID Normalization (Single Source of Truth) =====
+
+/**
+ * Normalizes a WhatsApp JID to a canonical format.
+ * - Individual: `5511999999999@s.whatsapp.net`
+ * - Group: `120363...@g.us`
+ * - LID: `...@lid`
+ *
+ * Returns `null` if the JID cannot be safely normalized.
+ * No DDI is ever forced — if digits are ambiguous, returns null.
+ */
+export function normalizeJid(jid: string | null | undefined, context?: string): string | null {
+    if (!jid || typeof jid !== 'string') {
+        if (context) console.warn(`[normalizeJid] Null/empty JID received. Context: ${context}`)
+        return null
+    }
+
+    // Clean: remove whitespace, +, dashes, parens
+    let cleaned = jid.trim().replace(/[\s+\-()]/g, '')
+
+    // Already has a valid suffix — just clean digits before it
+    if (cleaned.endsWith('@s.whatsapp.net')) {
+        const digits = cleaned.replace('@s.whatsapp.net', '').replace(/\D/g, '')
+        if (!digits || digits.length < 6) {
+            console.warn(`[normalizeJid] Invalid digits in JID: "${jid}". Context: ${context || 'unknown'}`)
+            return null
+        }
+        return `${digits}@s.whatsapp.net`
+    }
+
+    if (cleaned.endsWith('@g.us')) {
+        return cleaned // Group JIDs are opaque — preserve as-is
+    }
+
+    if (cleaned.endsWith('@lid')) {
+        return cleaned // LID JIDs are opaque — preserve as-is
+    }
+
+    // No suffix: treat as phone number → individual JID
+    const digits = cleaned.replace(/\D/g, '')
+    if (!digits || digits.length < 6) {
+        console.warn(`[normalizeJid] Cannot normalize JID: "${jid}". Context: ${context || 'unknown'}`)
+        return null
+    }
+
+    return `${digits}@s.whatsapp.net`
+}
+
+/**
+ * Extracts the numeric phone portion from a JID.
+ * Returns `null` for group JIDs, LID JIDs, or invalid inputs.
+ */
+export function extractPhoneFromJid(jid: string | null | undefined): string | null {
+    if (!jid || typeof jid !== 'string') return null
+
+    // Group and LID JIDs don't map to a single phone
+    if (jid.endsWith('@g.us') || jid.endsWith('@lid')) return null
+
+    const digits = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '')
+    return digits.length >= 6 ? digits : null
+}
+
+// ===== Utility (using normalizeJid) =====
 
 export function formatPhoneNumber(jid: string): string {
-    return jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '')
+    return extractPhoneFromJid(jid) || jid.replace(/@.*$/, '')
 }
 
 export function toWhatsAppJid(phone: string): string {
-    const cleaned = phone.replace(/\D/g, '')
-    return `${cleaned}@s.whatsapp.net`
+    return normalizeJid(phone) || `${phone.replace(/\D/g, '')}@s.whatsapp.net`
 }
 
 export function isGroupJid(jid: string): boolean {

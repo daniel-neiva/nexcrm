@@ -88,24 +88,26 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  whatsappId     String?      @unique
-  whatsappJid    String?
-  content        String
-  type           String       @default("text")
-  fromMe         Boolean      @default(false)
-  isRead         Boolean      @default(false)
-  sender         SenderType
-  senderName     String?
-  fileUrl        String?
-  fileName       String?
-  createdAt      DateTime     @default(now())
-  conversationId String
-  userId         String?
-  inboxId        String?
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User?        @relation(fields: [userId], references: [id])
-  inbox          Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  id               String       @id @default(cuid())
+  whatsappId       String?      @unique
+  whatsappJid      String?
+  content          String
+  type             String       @default("text")
+  fromMe           Boolean      @default(false)
+  isRead           Boolean      @default(false)
+  sender           SenderType
+  senderName       String?
+  fileUrl          String?
+  fileName         String?
+  participantJid   String?
+  participantPhone String?
+  createdAt        DateTime     @default(now())
+  conversationId   String
+  userId           String?
+  inboxId          String?
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user             User?        @relation(fields: [userId], references: [id])
+  inbox            Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
 
   @@index([inboxId])
   @@index([conversationId])

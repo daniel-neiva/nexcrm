@@ -1,4 +1,4 @@
-import { getChats, getMessages, getGroups, getContacts, formatPhoneNumber, isGroupJid, isLidJid } from '@/lib/evolution'
+import { getChats, getMessages, getGroups, getContacts, formatPhoneNumber, isGroupJid, isLidJid, normalizeJid, extractPhoneFromJid } from '@/lib/evolution'
 import { getAllLidMappings, loadLidMap } from '@/lib/lid-map'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -253,74 +253,41 @@ export async function GET(request: NextRequest) {
             }
 
             case 'messages': {
-                const remoteJid = searchParams.get('jid')
-                if (!remoteJid) {
+                const rawJid = searchParams.get('jid')
+                if (!rawJid) {
                     return NextResponse.json({ error: 'jid is required' }, { status: 400 })
                 }
 
-                // 1. Find the conversation in our database to get its ID
+                // Normalize incoming JID for consistent DB lookup
+                const normalizedJid = normalizeJid(rawJid, 'api/whatsapp/messages')
+                if (!normalizedJid) {
+                    return NextResponse.json({ error: 'Invalid JID format' }, { status: 400 })
+                }
+
+                // 1. Find the conversation in our database
                 const conversation = await prisma.conversation.findFirst({
                     where: {
-                        whatsappJid: remoteJid,
+                        whatsappJid: normalizedJid,
                         inboxId: inbox.id
                     }
                 })
 
                 if (!conversation) {
-                    // No local conversation means no messages yet
-                    return NextResponse.json([])
+                    // Try fallback with raw JID (for pre-normalization data)
+                    const fallbackConv = await prisma.conversation.findFirst({
+                        where: {
+                            whatsappJid: rawJid,
+                            inboxId: inbox.id
+                        }
+                    })
+                    if (!fallbackConv) {
+                        return NextResponse.json([])
+                    }
+                    // Use the fallback conversation
+                    return NextResponse.json(await formatConversationMessages(fallbackConv.id, rawJid, inbox))
                 }
 
-                // 2. Fetch messages from our database
-                const dbMessages = await prisma.message.findMany({
-                    where: { conversationId: conversation.id },
-                    orderBy: { createdAt: 'asc' }
-                })
-
-                // 3. Fetch contacts for name resolution (especially for groups)
-                const dbContacts = await prisma.contact.findMany({
-                    where: { accountId: inbox.accountId },
-                    select: { phone: true, name: true, avatarUrl: true }
-                })
-
-                const contactNameMap = new Map<string, string>()
-                const contactPicMap = new Map<string, string>()
-                for (const c of dbContacts) {
-                    if (c.phone) {
-                        if (c.name) contactNameMap.set(c.phone, c.name)
-                        if (c.avatarUrl) contactPicMap.set(c.phone, c.avatarUrl)
-                    }
-                }
-
-                // 4. Map DB messages to the frontend expected format
-                const formattedMessages = dbMessages.map(msg => {
-                    let senderName = msg.senderName || null;
-                    let senderProfilePicUrl = null;
-
-                    if (!msg.fromMe && msg.whatsappJid) {
-                        const lookupPhone = msg.whatsappJid.split('@')[0].replace('+', '');
-                        senderName = msg.senderName || contactNameMap.get(lookupPhone) || formatBrazilPhone(lookupPhone);
-                        senderProfilePicUrl = contactPicMap.get(lookupPhone) || null;
-                    }
-
-                    return {
-                        id: msg.id,
-                        content: msg.content || '',
-                        type: msg.type,
-                        mimetype: msg.type === 'image' ? 'image/jpeg' : (msg.type === 'video' ? 'video/mp4' : (msg.type === 'audio' ? 'audio/ogg' : '')),
-                        fromMe: msg.fromMe,
-                        remoteJid: remoteJid, // Send back the requested JID context
-                        timestamp: msg.createdAt ? msg.createdAt.toISOString() : null,
-                        senderName,
-                        senderProfilePicUrl,
-                        hasMedia: ['image', 'audio', 'video', 'document', 'sticker'].includes(msg.type),
-                        isRead: msg.isRead || msg.fromMe,
-                        fileUrl: (msg as any).fileUrl || null,
-                        fileName: (msg as any).fileName || null,
-                    }
-                });
-
-                return NextResponse.json(formattedMessages)
+                return NextResponse.json(await formatConversationMessages(conversation.id, normalizedJid, inbox))
             }
 
             default:
@@ -333,4 +300,71 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         )
     }
+}
+
+// ===== Helper: format messages for frontend =====
+async function formatConversationMessages(
+    conversationId: string,
+    remoteJid: string,
+    inbox: { id: string; accountId: string }
+) {
+    const dbMessages = await prisma.message.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'asc' }
+    })
+
+    // Build contact lookup maps for name/avatar resolution
+    const dbContacts = await prisma.contact.findMany({
+        where: { accountId: inbox.accountId },
+        select: { phone: true, name: true, avatarUrl: true }
+    })
+
+    const contactNameMap = new Map<string, string>()
+    const contactPicMap = new Map<string, string>()
+    for (const c of dbContacts) {
+        if (c.phone) {
+            if (c.name) contactNameMap.set(c.phone, c.name)
+            if (c.avatarUrl) contactPicMap.set(c.phone, c.avatarUrl)
+            // Also index by digits-only for flexible lookup
+            const digits = extractPhoneFromJid(c.phone)
+            if (digits) {
+                if (c.name) contactNameMap.set(digits, c.name)
+                if (c.avatarUrl) contactPicMap.set(digits, c.avatarUrl)
+            }
+        }
+    }
+
+    return dbMessages.map(msg => {
+        let senderName = msg.senderName || null
+        let senderProfilePicUrl: string | null = null
+
+        if (!msg.fromMe) {
+            // For groups: use participantJid to resolve sender name
+            // For 1:1: use whatsappJid (the contact's JID)
+            const lookupJid = msg.participantJid || msg.whatsappJid || null
+            if (lookupJid) {
+                const lookupPhone = extractPhoneFromJid(lookupJid)
+                if (lookupPhone) {
+                    senderName = msg.senderName || contactNameMap.get(lookupPhone) || contactNameMap.get(lookupJid) || formatBrazilPhone(lookupPhone)
+                    senderProfilePicUrl = contactPicMap.get(lookupPhone) || contactPicMap.get(lookupJid) || null
+                }
+            }
+        }
+
+        return {
+            id: msg.id,
+            content: msg.content || '',
+            type: msg.type,
+            mimetype: msg.type === 'image' ? 'image/jpeg' : (msg.type === 'video' ? 'video/mp4' : (msg.type === 'audio' ? 'audio/ogg' : '')),
+            fromMe: msg.fromMe,
+            remoteJid,
+            timestamp: msg.createdAt ? msg.createdAt.toISOString() : null,
+            senderName,
+            senderProfilePicUrl,
+            hasMedia: ['image', 'audio', 'video', 'document', 'sticker'].includes(msg.type),
+            isRead: msg.isRead || msg.fromMe,
+            fileUrl: msg.fileUrl || null,
+            fileName: msg.fileName || null,
+        }
+    })
 }
