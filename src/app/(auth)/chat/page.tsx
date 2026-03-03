@@ -75,11 +75,20 @@ function getInitials(name: string) {
 
 // ===== Media Component =====
 function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url: string) => void }) {
-    // If we already have a stored fileUrl, use it directly without fetching from Evolution
-    const storedUrl = msg.fileUrl || null
+    // Only use stored URL if it looks like a valid permanent URL (Supabase Storage signed URL)
+    // Exclude expired WhatsApp CDN URLs (mmg.whatsapp.net, etc.)
+    const isValidStoredUrl = msg.fileUrl && (
+        msg.fileUrl.includes('supabase') ||
+        msg.fileUrl.includes('/storage/') ||
+        msg.fileUrl.startsWith('blob:') ||
+        msg.fileUrl.startsWith('data:')
+    )
+    const storedUrl = isValidStoredUrl ? msg.fileUrl! : null
+
     const [mediaUrl, setMediaUrl] = useState<string | null>(storedUrl)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(false)
+    const [imgBroken, setImgBroken] = useState(false)
 
     const loadMedia = useCallback(async () => {
         if (mediaUrl || loading) return
@@ -96,7 +105,11 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
             })
             if (res.ok) {
                 const blob = await res.blob()
-                setMediaUrl(URL.createObjectURL(blob))
+                if (blob.size > 0) {
+                    setMediaUrl(URL.createObjectURL(blob))
+                } else {
+                    setError(true)
+                }
             } else {
                 setError(true)
             }
@@ -107,13 +120,35 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
         }
     }, [msg.id, msg.remoteJid, msg.fromMe, mediaUrl, loading])
 
-    // Auto-load images
+    // Auto-load images only if no stored URL
     useEffect(() => {
-        if (msg.type === "image" && !storedUrl) loadMedia()
-    }, [msg.type, loadMedia, storedUrl])
+        if (msg.type === "image" && !storedUrl && !error) loadMedia()
+    }, [msg.type, loadMedia, storedUrl, error])
 
-    if (error) {
-        return <p className="text-xs opacity-50 italic">Mídia indisponível</p>
+    // Clean content text (remove generic placeholders)
+    const contentText = msg.content && !['📷 Imagem', '🎵 Áudio', '🎬 Vídeo', '📄 Documento', '🏷️ Figurinha', '[Mídia]', 'Imagem', 'Áudio', 'Vídeo'].includes(msg.content.trim())
+        ? msg.content : null
+
+    // Fallback for unavailable media
+    const MediaFallback = ({ icon, label }: { icon: string; label: string }) => (
+        <div className="space-y-1">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm opacity-70">
+                <span>{icon}</span> <span className="italic">{label}</span>
+            </div>
+            {contentText && <p className="whitespace-pre-wrap break-words text-sm mt-1">{contentText}</p>}
+        </div>
+    )
+
+    if (error || imgBroken) {
+        const labels: Record<string, [string, string]> = {
+            image: ['📷', 'Imagem'],
+            video: ['🎬', 'Vídeo'],
+            audio: ['🎵', 'Áudio'],
+            document: ['📄', 'Documento'],
+            sticker: ['🏷️', 'Figurinha'],
+        }
+        const [icon, label] = labels[msg.type] || ['📎', 'Mídia']
+        return <MediaFallback icon={icon} label={label} />
     }
 
     switch (msg.type) {
@@ -121,20 +156,17 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
             if (loading) return <div className="w-48 h-32 rounded-lg bg-white/5 animate-pulse flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-blue-400" /></div>
             if (mediaUrl) return (
                 <div className="space-y-1">
-                    <img src={mediaUrl} alt="Imagem" className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => onImageClick?.(mediaUrl)} />
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-sm mt-1">{msg.content}</p>}
+                    <img
+                        src={mediaUrl}
+                        alt="Imagem"
+                        className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => onImageClick?.(mediaUrl)}
+                        onError={() => setImgBroken(true)}
+                    />
+                    {contentText && <p className="whitespace-pre-wrap break-words text-sm mt-1">{contentText}</p>}
                 </div>
             )
-            return (
-                <div className="space-y-1">
-                    <button onClick={loadMedia} className="flex flex-col items-start px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-                        <div className="flex items-center gap-2 text-sm text-blue-400 font-medium">
-                            <Download className="w-4 h-4" /> <span>Carregar imagem</span>
-                        </div>
-                    </button>
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-sm mt-1">{msg.content}</p>}
-                </div>
-            )
+            return <MediaFallback icon="📷" label="Imagem" />
 
         case "audio":
             if (loading) return <div className="w-48 h-10 rounded-lg bg-white/5 animate-pulse" />
@@ -144,7 +176,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
                     <button onClick={loadMedia} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition-colors">
                         <Play className="w-4 h-4 text-blue-400" /> <span>🎵 Ouvir áudio</span>
                     </button>
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-sm mt-1">{msg.content}</p>}
+                    {contentText && <p className="whitespace-pre-wrap break-words text-sm mt-1">{contentText}</p>}
                 </div>
             )
 
@@ -153,7 +185,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
             if (mediaUrl) return (
                 <div className="space-y-1">
                     <video controls src={mediaUrl} className="max-w-[280px] rounded-lg" />
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-sm mt-1">{msg.content}</p>}
+                    {contentText && <p className="whitespace-pre-wrap break-words text-sm mt-1">{contentText}</p>}
                 </div>
             )
             return (
@@ -161,17 +193,17 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
                     <button onClick={loadMedia} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 transition-all shadow-sm">
                         <Play className="w-4 h-4" /> <span className="font-semibold text-sm tracking-wide">Ver vídeo</span>
                     </button>
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed mt-2">{msg.content}</p>}
+                    {contentText && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed mt-2">{contentText}</p>}
                 </div>
             )
 
         case "document":
             if (loading) return <div className="w-48 h-10 rounded-lg bg-white/5 animate-pulse" />
             if (mediaUrl) return (
-                <a href={mediaUrl} download={msg.content || "documento"} className="flex flex-col items-start gap-2 p-3 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition-colors">
+                <a href={mediaUrl} download={msg.fileName || msg.content || "documento"} className="flex flex-col items-start gap-2 p-3 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition-colors">
                     <div className="flex items-center gap-2 w-full">
                         <FileText className="w-4 h-4 text-blue-400 shrink-0" />
-                        <span className="truncate">{msg.content || "📄 Documento"}</span>
+                        <span className="truncate">{msg.fileName || msg.content || "📄 Documento"}</span>
                         <Download className="w-3.5 h-3.5 ml-auto text-[#64748B] shrink-0" />
                     </div>
                 </a>
@@ -179,9 +211,9 @@ function MediaContent({ msg, onImageClick }: { msg: Message; onImageClick?: (url
             return (
                 <div className="space-y-1">
                     <button onClick={loadMedia} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition-colors">
-                        <FileText className="w-4 h-4 text-blue-400 shrink-0" /> <span className="truncate">{msg.content ? "📄 Carregar documento" : "📄 Documento"}</span>
+                        <FileText className="w-4 h-4 text-blue-400 shrink-0" /> <span className="truncate">{msg.fileName || "📄 Carregar documento"}</span>
                     </button>
-                    {msg.content && <p className="whitespace-pre-wrap break-words text-sm mt-1">{msg.content}</p>}
+                    {contentText && <p className="whitespace-pre-wrap break-words text-sm mt-1">{contentText}</p>}
                 </div>
             )
 
