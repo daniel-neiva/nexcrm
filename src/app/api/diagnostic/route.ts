@@ -1,30 +1,71 @@
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || ''
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || ''
+/**
+ * GET /api/diagnostic
+ * Returns a detailed view of the data state for debugging.
+ */
+export async function GET() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-export async function GET(req) {
-    const url = new URL(req.url)
-    const instanceName = url.searchParams.get('instance') || 'daniel-pessoal'
+    // Get all inboxes
+    const inboxes = await prisma.inbox.findMany({
+        select: { id: true, name: true, instanceName: true, status: true }
+    })
 
-    try {
-        const start = Date.now()
-        const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-            headers: { apikey: EVOLUTION_API_KEY },
-            cache: 'no-store'
+    const result: any = { inboxes: [] }
+
+    for (const inbox of inboxes) {
+        const convCount = await prisma.conversation.count({ where: { inboxId: inbox.id } })
+        const msgCount = await prisma.message.count({ where: { inboxId: inbox.id } })
+        const mediaCount = await prisma.message.count({
+            where: { inboxId: inbox.id, type: { in: ['image', 'video', 'audio', 'document', 'sticker'] } }
         })
-        const duration = Date.now() - start
-
-        const text = await res.text()
-        return NextResponse.json({
-            success: res.ok,
-            status: res.status,
-            durationMs: duration,
-            rawText: text.substring(0, 500) // cap size
+        const mediaWithUrl = await prisma.message.count({
+            where: { inboxId: inbox.id, type: { in: ['image', 'video', 'audio', 'document', 'sticker'] }, fileUrl: { not: null } }
         })
-    } catch (e) {
-        return NextResponse.json({ error: String(e) }, { status: 500 })
+        const emptyConversations = await prisma.conversation.findMany({
+            where: { inboxId: inbox.id },
+            select: {
+                id: true,
+                whatsappJid: true,
+                _count: { select: { messages: true } }
+            }
+        })
+        const emptyCounts = emptyConversations.filter(c => c._count.messages === 0).length
+        const sampleEmpty = emptyConversations
+            .filter(c => c._count.messages === 0)
+            .slice(0, 5)
+            .map(c => ({ id: c.id, jid: c.whatsappJid }))
+
+        // Sample JID formats
+        const sampleJids = emptyConversations
+            .slice(0, 10)
+            .map(c => ({ jid: c.whatsappJid, msgs: c._count.messages }))
+
+        result.inboxes.push({
+            name: inbox.name,
+            instance: inbox.instanceName,
+            status: inbox.status,
+            conversations: convCount,
+            messages: msgCount,
+            mediaMessages: mediaCount,
+            mediaWithFileUrl: mediaWithUrl,
+            emptyConversations: emptyCounts,
+            sampleEmptyConversations: sampleEmpty,
+            sampleJidFormats: sampleJids,
+        })
     }
+
+    // Contact stats
+    const contactCount = await prisma.contact.count()
+    const contactsWithPhone = await prisma.contact.count({ where: { phone: { not: '' } } })
+    result.contacts = { total: contactCount, withPhone: contactsWithPhone }
+
+    return NextResponse.json(result)
 }
