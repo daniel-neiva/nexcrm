@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
                             channel: 'WHATSAPP',
                             status: 'OPEN',
                             unreadCount: fromMe ? 0 : 1,
-                            aiEnabled: true
+                            aiEnabled: false
                         },
                         select: {
                             id: true,
@@ -394,7 +394,7 @@ export async function POST(request: NextRequest) {
                                     // Persist the agent assignment so future messages skip routing
                                     await prisma.conversation.update({
                                         where: { id: _conversationId },
-                                        data: { agentId, aiEnabled: true }
+                                        data: { agentId, aiEnabled: false }
                                     })
 
                                     // Notify the CRM UI that the agent was auto-assigned
